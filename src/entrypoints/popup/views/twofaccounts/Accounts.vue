@@ -468,7 +468,7 @@
             </template>
         </StackLayout>
         <!-- otp modal -->
-        <Modal v-model="showOtpInModal">
+        <Modal v-model:is-active="showOtpInModal">
             <OtpDisplay
                 ref="otpDisplay"
                 :accountParams="accountParams"

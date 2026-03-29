@@ -139,7 +139,7 @@
 <template>
     <div class="ext-full-height">
         <!-- otp display modal (when auto-save is enabled) -->
-        <Modal v-model="showOtpInModal">
+        <Modal v-model:is-active="showOtpInModal">
             <OtpDisplay
                 ref="OtpDisplayForAutoSave"
                 :accountParams="accountParams"
@@ -160,7 +160,7 @@
             message="message.parsing_data"
         />
         <!-- alternatives -->
-        <Modal v-model="showAlternatives">
+        <Modal v-model:is-active="showAlternatives">
             <QrContentDisplay :qrContent="uri" :isCompact="true" />
         </Modal>
     </div>
