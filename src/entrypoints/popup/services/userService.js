@@ -20,5 +20,9 @@ export default {
     getPreferences(config = {}) {
         return apiClient.get('/user/preferences', { ...config })
     },
-    
+
+    getEncryptionInfo(config = {}) {
+        return apiClient.get('/encryption/info', { ...config })
+    },
+
 }

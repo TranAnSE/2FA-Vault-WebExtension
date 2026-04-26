@@ -7,6 +7,10 @@ export default {
         return apiClient.get('/twofaccounts' + (withOtp ? '?withOtp=1' : ''), { ...config })
     },
 
+    getEncrypted(config = {}) {
+        return apiClient.get('/twofaccounts/encrypted', { ...config })
+    },
+
     getByIds(ids, withOtp = false, config = {}) {
         return apiClient.get('/twofaccounts?ids=' + ids + (withOtp ? '&withOtp=1' : ''), { ...config })
     },

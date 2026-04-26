@@ -21,10 +21,10 @@
         "get-translations": "node ./scripts/crowdin-get-translations.js"
     },
     "devDependencies": {
-        "@2fauth/formcontrols": "file:../2FAuth-Components/packages/formcontrols",
-        "@2fauth/stores": "file:../2FAuth-Components/packages/stores",
-        "@2fauth/styles": "file:../2FAuth-Components/packages/styles",
-        "@2fauth/ui": "file:../2FAuth-Components/packages/ui",
+        "@2fauth/formcontrols": "file:../2FA-Vault-Components/packages/formcontrols",
+        "@2fauth/stores": "file:../2FA-Vault-Components/packages/stores",
+        "@2fauth/styles": "file:../2FA-Vault-Components/packages/styles",
+        "@2fauth/ui": "file:../2FA-Vault-Components/packages/ui",
         "@eslint/js": "^9.0.0",
         "@intlify/unplugin-vue-i18n": "^11.0.7",
         "@kyvg/vue3-notification": "^3.4.2",
@@ -34,6 +34,8 @@
         "@vueuse/core": "^14.2.1",
         "@wxt-dev/module-vue": "^1.0.3",
         "axios": "^1.13.5",
+        "bulma": "^1.0.4",
+        "bulma-checkradio": "^2.1.3",
         "cross-env": "^10.1.0",
         "crypto-js": "^4.2.0",
         "detect-browser": "^5.3.0",
@@ -50,6 +52,7 @@
         "wxt": "^0.20.18"
     },
     "dependencies": {
+        "argon2-browser": "^1.18.0",
         "vue": "^3.5.28"
     }
 }

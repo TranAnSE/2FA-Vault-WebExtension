@@ -273,7 +273,7 @@
             updateTotps()
         }
         else {
-            twofaccounts.fetch().then(() => {
+            twofaccounts.fetchForCurrentVaultState().then(() => {
                 // if (twofaccounts.backendWasNewer) {
                 //     notify.info({ text: trans('commons.data_refreshed_to_reflect_server_changes'), duration: 10000 })
                 // }

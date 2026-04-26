@@ -1,7 +1,9 @@
 import { defineStore } from 'pinia'
 import { usePreferenceStore } from '@/stores/preferenceStore'
 import twofaccountService from '@popup/services/twofaccountService'
+import userService from '@popup/services/userService'
 import { asArray } from '@popup/composables/helpers'
+import { decryptAccount, deriveVaultKey, exportKey, importKey, verifyVaultKey } from '@popup/services/e2eeCryptoService'
 
 export const useTwofaccounts = defineStore('twofaccounts', () => {
 
@@ -16,6 +18,7 @@ export const useTwofaccounts = defineStore('twofaccounts', () => {
     const fetchedOn = ref(null)
     const isFetching = ref(false)
     const groupLessOnly = ref(false)
+    const encryptedVaultUnlocked = ref(false)
 
     // GETTERS
 
@@ -82,36 +85,87 @@ export const useTwofaccounts = defineStore('twofaccounts', () => {
             fetchedOn.value = Date.now()
 
             await twofaccountService.getAll(! preferenceStore.getOtpOnRequest).then(response => {
-                const backendItems = asArray(response?.data)
-                
-                // Defines if the store was up-to-date with the backend
-                if (force) {
-                    backendWasNewer.value = backendItems.length !== items.value.length
-                    
-                    items.value.forEach((item) => {
-                        let matchingBackendItem = backendItems.find(e => e.id === item.id)
-                        if (matchingBackendItem == undefined) {
-                            backendWasNewer.value = true
-                            return;
-                        }
-                        for (const field in item) {
-                            if (field !== 'otp' && item[field] != matchingBackendItem[field]) {
-                                backendWasNewer.value = true
-                                return;
-                            }
-                        }
-                    })
-                }
-
-                // Updates the state
-                items.value = backendItems
+                setItems(asArray(response?.data), force)
             })
         }
         else backendWasNewer.value = false
 
         isFetching.value = false
     }
-        
+
+    async function fetchForCurrentVaultState(force = false) {
+        const sessionStorage = browser.storage.session ?? browser.storage.local
+        const { vaultKey } = await sessionStorage.get('vaultKey')
+
+        if (vaultKey) {
+            encryptedVaultUnlocked.value = true
+            return fetchEncrypted(await importKey(vaultKey))
+        }
+
+        encryptedVaultUnlocked.value = false
+        return fetch(force)
+    }
+
+    async function unlockEncryptedVault(masterPassword) {
+        const { data: encryptionInfo } = await userService.getEncryptionInfo()
+
+        if (!encryptionInfo?.encryption_enabled) {
+            encryptedVaultUnlocked.value = false
+            return { status: true, encrypted: false }
+        }
+
+        const key = await deriveVaultKey(masterPassword, encryptionInfo.encryption_salt)
+        const isValid = await verifyVaultKey(encryptionInfo.encryption_test_value, key)
+
+        if (!isValid) {
+            return { status: false, reason: 'error.invalid_encryption_password' }
+        }
+
+        const sessionStorage = browser.storage.session ?? browser.storage.local
+        await sessionStorage.set({ vaultKey: await exportKey(key) })
+        await fetchEncrypted(key)
+        encryptedVaultUnlocked.value = true
+
+        return { status: true, encrypted: true }
+    }
+
+    async function fetchEncrypted(key) {
+        isFetching.value = true
+
+        try {
+            const response = await twofaccountService.getEncrypted()
+            const decryptedAccounts = await Promise.all(
+                asArray(response?.data).map(account => decryptAccount(account, key))
+            )
+
+            setItems(decryptedAccounts, true)
+        } finally {
+            isFetching.value = false
+        }
+    }
+
+    function setItems(backendItems, force = false) {
+        if (force) {
+            backendWasNewer.value = backendItems.length !== items.value.length
+
+            items.value.forEach((item) => {
+                let matchingBackendItem = backendItems.find(e => e.id === item.id)
+                if (matchingBackendItem == undefined) {
+                    backendWasNewer.value = true
+                    return;
+                }
+                for (const field in item) {
+                    if (field !== 'otp' && item[field] != matchingBackendItem[field]) {
+                        backendWasNewer.value = true
+                        return;
+                    }
+                }
+            })
+        }
+
+        items.value = backendItems
+    }
+
     /**
      * Gets the IDs of all accounts that match the given period
      * @param {*} period 
@@ -130,6 +184,7 @@ export const useTwofaccounts = defineStore('twofaccounts', () => {
         fetchedOn,
         isFetching,
         groupLessOnly,
+        encryptedVaultUnlocked,
 
         // GETTERS
         filtered,
@@ -141,6 +196,9 @@ export const useTwofaccounts = defineStore('twofaccounts', () => {
         // ACTIONS
         $reset,
         fetch,
+        fetchForCurrentVaultState,
+        unlockEncryptedVault,
+        fetchEncrypted,
         accountIdsWithPeriod,
     }
 })

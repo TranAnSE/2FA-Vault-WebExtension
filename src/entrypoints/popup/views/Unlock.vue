@@ -1,12 +1,14 @@
 <script setup>
     import { useNotify } from '@2fauth/ui'
     import { usePreferenceStore } from '@/stores/preferenceStore'
+    import { useTwofaccounts } from '@popup/stores/twofaccounts'
     import { FormButtons } from '@2fauth/formcontrols'
     import { isFilled } from '@popup/composables/validators'
     
     const { t } = useI18n()
     const notify = useNotify()
     const preferenceStore = usePreferenceStore()
+    const twofaccounts = useTwofaccounts()
     const router = useRouter()
     const isBusy = ref(false)
     const pwd = ref(null)
@@ -32,14 +34,21 @@
             const { status: unlockingStatus, reason } = await sendMessage('UNLOCK', { }, 'background')
             isBusy.value = false
 
-            if (unlockingStatus) {
-                preferenceStore.syncWithServer()
-                router.push({ name: 'accounts' })
-            }
-            else {
+            if (! unlockingStatus) {
                 console.log('[EXT:VIEW] 💀 Cannot unlock: ', t(reason))
                 notify.alert({ text: t('error.wrong_password') })
+                return
             }
+
+            const { status: vaultUnlockStatus } = await twofaccounts.unlockEncryptedVault(pwd.value)
+
+            if (! vaultUnlockStatus) {
+                notify.alert({ text: t('error.wrong_password') })
+                return
+            }
+
+            preferenceStore.syncWithServer()
+            router.push({ name: 'accounts' })
         }
     }
 
