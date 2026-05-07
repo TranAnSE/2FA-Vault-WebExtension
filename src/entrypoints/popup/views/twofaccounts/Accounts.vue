@@ -2,6 +2,7 @@
     import { onMessage, sendMessage } from 'webext-bridge/popup'
     import ActionButtons from '@popup/components/ActionButtons.vue'
     import twofaccountService from '@popup/services/twofaccountService'
+    import { createLocalOtpService } from '@popup/services/localOtpService'
     import { usePreferenceStore } from '@/stores/preferenceStore'
     import { useSettingStore } from '@/stores/settingStore'
     import { asArray } from '@popup/composables/helpers'
@@ -43,6 +44,15 @@
     })
     const dotsControllers = ref([])
     const dotsRefs = ref([])
+    const currentOtpService = computed(() => twofaccounts.encryptedVaultUnlocked
+        ? createLocalOtpService(() => twofaccounts.items)
+        : twofaccountService)
+    const otpService = {
+        get: (...args) => currentOtpService.value.get(...args),
+        getOtpById: (...args) => currentOtpService.value.getOtpById(...args),
+        getOtpByUri: (...args) => currentOtpService.value.getOtpByUri(...args),
+        getOtpByParams: (...args) => currentOtpService.value.getOtpByParams(...args),
+    }
 
     /**
      * Returns whether or not the accounts should be displayed
@@ -88,7 +98,8 @@
 
         if (copied) {
             if (preferenceStore.kickUserAfter == -1) {
-                sendMessage('LOCK_EXTENSION', { }, 'background').then(() => {
+                sendMessage('LOCK_EXTENSION', { }, 'background').then(async () => {
+                    await twofaccounts.clearVaultSession()
                     router.push('unlock')
                 })
             }
@@ -106,10 +117,10 @@
     }
 
     /**
-     * Gets a fresh OTP from backend and copies it
+     * Gets a fresh OTP and copies it
      */
     async function getAndCopyOTP(account) {
-        twofaccountService.getOtpById(account.id).then(response => {
+        return otpService.getOtpById(account.id).then(response => {
             let otp = response.data
             copyToClipboard(otp.password)
 
@@ -121,6 +132,9 @@
                     hotpToIncrement.counter = otp.counter
                 }
             }
+        })
+        .catch(error => {
+            errorHandler.show(error)
         })
     }
 
@@ -162,10 +176,28 @@
 
         if (period == undefined) {
             renewedPeriod.value = -1
-            fetchPromise = twofaccountService.getAll(true)
+            fetchPromise = twofaccounts.encryptedVaultUnlocked
+                ? Promise.all(twofaccounts.items
+                    .filter(account => account.otp_type.includes('totp'))
+                    .map(async account => ({
+                        id: account.id,
+                        otp_type: account.otp_type,
+                        otp: (await otpService.getOtpById(account.id)).data,
+                    })))
+                    .then(data => ({ data }))
+                : twofaccountService.getAll(true)
         } else {
             renewedPeriod.value = period
-            fetchPromise = twofaccountService.getByIds(twofaccounts.accountIdsWithPeriod(period).join(','), true)
+            fetchPromise = twofaccounts.encryptedVaultUnlocked
+                ? Promise.all(twofaccounts.items
+                    .filter(account => account.otp_type.includes('totp') && account.period == period)
+                    .map(async account => ({
+                        id: account.id,
+                        otp_type: account.otp_type,
+                        otp: (await otpService.getOtpById(account.id)).data,
+                    })))
+                    .then(data => ({ data }))
+                : twofaccountService.getByIds(twofaccounts.accountIdsWithPeriod(period).join(','), true)
         }
         
         if (settingStore.hasFeature_showNextOtp) {
@@ -186,7 +218,7 @@
             }
         }
 
-        fetchPromise.then(response => {
+        return fetchPromise.then(response => {
             let generatedAt = 0
             const backendItems = asArray(response.data)
 
@@ -211,6 +243,9 @@
                 })
             })
         })
+        .catch(error => {
+            errorHandler.show(error)
+        })
         .finally(() => {
             if (! settingStore.hasFeature_showNextOtp) {
                 isRenewingOTPs.value = false
@@ -223,7 +258,8 @@
      * Lock the extension
      */
     function lockExtension() {
-        sendMessage('LOCK_EXTENSION', { }, 'background').then(() => {
+        sendMessage('LOCK_EXTENSION', { }, 'background').then(async () => {
+            await twofaccounts.clearVaultSession()
             router.push('unlock')
         })
     }
@@ -473,7 +509,7 @@
                 ref="otpDisplay"
                 :accountParams="accountParams"
                 :preferences="preferenceStore.$state"
-                :twofaccountService="twofaccountService"
+                :twofaccountService="otpService"
                 :can_showNextOtp="settingStore.hasFeature_showNextOtp"
                 :iconPathPrefix="settingStore.hostUrl"
                 @please-close-me="showOtpInModal = false"

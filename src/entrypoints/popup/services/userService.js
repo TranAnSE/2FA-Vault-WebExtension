@@ -1,6 +1,8 @@
 import { httpClientFactory } from '@popup/services/httpClientFactory'
 
-const apiClient = httpClientFactory('api')
+function getApiClient() {
+    return httpClientFactory('api')
+}
 
 export default {
     /**
@@ -9,7 +11,7 @@ export default {
      * @returns promise
      */
     get(config = {}) {
-        return apiClient.get('/user', { ...config })
+        return getApiClient().get('/user', { ...config })
     },
 
     /**
@@ -18,11 +20,11 @@ export default {
      * @returns promise
      */
     getPreferences(config = {}) {
-        return apiClient.get('/user/preferences', { ...config })
+        return getApiClient().get('/user/preferences', { ...config })
     },
 
     getEncryptionInfo(config = {}) {
-        return apiClient.get('/encryption/info', { ...config })
+        return getApiClient().get('/encryption/info', { ...config })
     },
 
 }

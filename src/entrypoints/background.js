@@ -587,6 +587,11 @@ export default defineBackground({
             state.locked = true
         }
 
+        function clearVaultKey() {
+            const sessionStorage = browser.storage.session ?? browser.storage.local
+            return sessionStorage.remove('vaultKey').then(() => true, () => false)
+        }
+
         /**
          * Load the workers state from storage or apply default values
          * MARK: loadState()
@@ -672,9 +677,11 @@ export default defineBackground({
             setStateToLocked()
             storeState().then(() => {
                 password = null
-                // Clear the alarm so it doesn't fire again
-                browser.alarms.clear('lock-extension').then((cleared) => {
-                    if (cleared) swlog('⏰ lock-extension alarm cleared by lockNow()')
+                clearVaultKey().then(() => {
+                    // Clear the alarm so it doesn't fire again
+                    browser.alarms.clear('lock-extension').then((cleared) => {
+                        if (cleared) swlog('⏰ lock-extension alarm cleared by lockNow()')
+                    })
                 })
             })
         }

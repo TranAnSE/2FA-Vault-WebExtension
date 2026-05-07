@@ -4,11 +4,13 @@
     import { usePreferenceStore } from '@/stores/preferenceStore'
     import { useSettingStore } from '@/stores/settingStore'
     import { useBusStore } from '@popup/stores/bus'
+    import { useTwofaccounts } from '@popup/stores/twofaccounts'
     import { Kicker } from '@2fauth/ui'
 
     const preferenceStore = usePreferenceStore()
     const settingStore = useSettingStore()
     const bus = useBusStore()
+    const twofaccounts = useTwofaccounts()
     const route = useRoute()
     const router = useRouter()
     const kickUser = ref(null)
@@ -65,7 +67,8 @@
     // Locks the extension
     async function lockExtension() {
         await sendMessage('LOCK_EXTENSION', { }, 'background')
-        
+        await twofaccounts.clearVaultSession()
+
         router.push({ name: 'unlock' })
     }
 

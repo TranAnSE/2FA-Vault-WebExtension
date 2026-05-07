@@ -70,6 +70,13 @@ export const useTwofaccounts = defineStore('twofaccounts', () => {
         backendWasNewer.value = false
         fetchedOn.value = null
         isFetching.value = false
+        encryptedVaultUnlocked.value = false
+    }
+
+    async function clearVaultSession() {
+        const sessionStorage = browser.storage.session ?? browser.storage.local
+        await sessionStorage.remove('vaultKey')
+        $reset()
     }
 
     /**
@@ -139,6 +146,7 @@ export const useTwofaccounts = defineStore('twofaccounts', () => {
             )
 
             setItems(decryptedAccounts, true)
+            return decryptedAccounts
         } finally {
             isFetching.value = false
         }
@@ -199,6 +207,7 @@ export const useTwofaccounts = defineStore('twofaccounts', () => {
         fetchForCurrentVaultState,
         unlockEncryptedVault,
         fetchEncrypted,
+        clearVaultSession,
         accountIdsWithPeriod,
     }
 })

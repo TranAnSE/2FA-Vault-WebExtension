@@ -1,13 +1,15 @@
 import { httpClientFactory } from '@popup/services/httpClientFactory'
 
-const apiClient = httpClientFactory('api')
+function getApiClient() {
+    return httpClientFactory('api')
+}
 
 export default {
     /**
-     * 
-     * @returns 
+     *
+     * @returns
      */
     getAll() {
-        return apiClient.get('groups')
+        return getApiClient().get('groups')
     },
 }

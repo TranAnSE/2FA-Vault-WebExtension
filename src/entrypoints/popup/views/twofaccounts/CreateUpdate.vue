@@ -8,6 +8,7 @@
     import { useNotify, OtpDisplay, QrContentDisplay, Spinner } from '@2fauth/ui'
     import { useI18n } from 'vue-i18n'
     import { useErrorHandler } from '@2fauth/stores'
+    import { useTwofaccounts } from '@popup/stores/twofaccounts'
 
     const errorHandler = useErrorHandler()
     const { t } = useI18n()
@@ -16,6 +17,7 @@
     const router = useRouter()
     const bus = useBusStore()
     const notify = useNotify()
+    const twofaccounts = useTwofaccounts()
     const accountParams = ref({
         otp_type: '',
         account: '',
@@ -73,7 +75,8 @@
      * Lock the extension
      */
     function lockExtension() {
-        sendMessage('LOCK_EXTENSION', { }, 'background').then(() => {
+        sendMessage('LOCK_EXTENSION', { }, 'background').then(async () => {
+            await twofaccounts.clearVaultSession()
             router.push('unlock')
         })
     }

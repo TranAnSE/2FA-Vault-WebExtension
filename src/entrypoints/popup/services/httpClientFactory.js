@@ -1,7 +1,11 @@
 import axios from "axios"
 import { useSettingStore } from '@/stores/settingStore'
 import { useErrorHandler } from '@2fauth/stores'
-import router from '../router'
+
+async function getRouter() {
+	const module = await import('../router')
+	return module.default
+}
 
 export const httpClientFactory = () => {
 
@@ -58,6 +62,7 @@ export const httpClientFactory = () => {
             }
             
             if (error.response && [401].includes(error.response.status)) {
+                const router = await getRouter()
                 router.push({ name: 'unauthorized' })
                 return Promise.reject(error)
             }
@@ -69,6 +74,7 @@ export const httpClientFactory = () => {
 
             // Not found
             if (error.response && [404].includes(error.response.status)) {
+                const router = await getRouter()
                 router.push({ name: '404' })
                 return new Promise(() => {})
             }
