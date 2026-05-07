@@ -8,7 +8,7 @@ export const useSettingStore = defineStore('settings', () => {
 
     const hostUrl = ref('')
 
-    // Used only if the server runs 2FAuth v5.5.0 or higher
+    // Used only if the server runs 2FA-Vault v5.5.0 or higher
     const hasLockedPreferences = ref(false)
     const lockedPreferences = ref([])
     const featureFlags = ref([])
@@ -30,7 +30,7 @@ export const useSettingStore = defineStore('settings', () => {
     function fetchFeatureFlags()
     {
         featureFlagService.getAll({returnError: true}).then((response) => {
-            // Until 2FAuth v6.1, the API returns the laravel landing view
+            // Until 2FA-Vault v6.1, the API returns the laravel landing view
             // html code when the requested endpoint does not exist.
             if (String(response.data).startsWith('<!DOCTYPE'))
             {
@@ -44,7 +44,7 @@ export const useSettingStore = defineStore('settings', () => {
             })
         })
         .catch((error) => {
-            // Since 2FAuth v6.1 we receive a 404 response
+            // Since 2FA-Vault v6.1 we receive a 404 response
         })
     }
 

@@ -1,13 +1,13 @@
 {
-    "name": "2fauth-browser-extension",
-    "displayName": "2FAuth",
+    "name": "2fa-vault-browser-extension",
+    "displayName": "2FA-Vault",
     "version": "1.2.0",
-    "description": "Access your 2FAuth details and generate 2FA passwords directly from your browser toolbar",
+    "description": "Access your 2FA-Vault details and generate 2FA passwords directly from your browser toolbar",
     "private": true,
     "type": "module",
     "repository": {
         "type": "git",
-        "url": "https://github.com/Bubka/2FAuth-WebExtension"
+        "url": "https://github.com/TranAnSE/2FA-Vault-WebExtension"
     },
     "scripts": {
         "dev": "wxt",

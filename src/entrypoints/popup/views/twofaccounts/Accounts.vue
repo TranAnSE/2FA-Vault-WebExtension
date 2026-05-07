@@ -270,7 +270,7 @@
     async function scanForQrCodeInTab() {
         try {
             const result = await sendMessage('INJECT_CONTENT_SCRIPT', {
-                addButtonCaption: t('label.add_to_2fauth'),
+                addButtonCaption: t('label.add_to_2FA-Vault'),
                 cancelButtonCaption: t('label.cancel')
             }, 'background')
             
@@ -404,7 +404,7 @@
                                     </div>
                                     <transition name="popLater">
                                         <div v-show="preferenceStore.getOtpOnRequest == false" class="has-text-right">
-                                            <!-- POST SHOW-NEXT-OTP ( >= 2FAuth v5.5.0) -->
+                                            <!-- POST SHOW-NEXT-OTP ( >= 2FA-Vault v5.5.0) -->
                                             <div v-if="settingStore.hasFeature_showNextOtp && account.otp != undefined">
                                                 <div class="always-on-otp is-clickable has-nowrap has-text-grey is-size-5 ml-4" @click="copyToClipboard(account.otp.password)" @keyup.enter="copyToClipboard(account.otp.password)" :title="$t('label.copy_to_clipboard')">
                                                     {{  
@@ -437,7 +437,7 @@
                                                         :period="account.period" />
                                                 </div>
                                             </div>
-                                            <!-- PRE SHOW-NEXT-OTP ( < 2FAuth v5.5.0) -->
+                                            <!-- PRE SHOW-NEXT-OTP ( < 2FA-Vault v5.5.0) -->
                                             <span v-else-if="account.otp != undefined">
                                                 <span v-if="isRenewingOTPs == true && (renewedPeriod == -1 || renewedPeriod == account.period)" class="has-nowrap has-text-grey has-text-centered is-size-5">
                                                     <LucideLoaderCircle class="spinning" />

@@ -1,8 +1,8 @@
 {
     "extName": {
-      "message": "2FAuth"
+      "message": "2FA-Vault"
     },
     "extDescription": {
-      "message": "Générez vos codes 2FA avec 2FAuth directement depuis votre navigateur"
+      "message": "Générez vos codes 2FA avec 2FA-Vault directement depuis votre navigateur"
     }
 }

@@ -143,7 +143,7 @@ export const usePreferenceStore = defineStore('preferences', () => {
         try {
             // The hasLockedPreferences var indicates if at least one of the passed preferences
             // have the '.locked' property. If true, it means we are working with a server that
-            // runs 2FAuth v5.5.0 or higher.
+            // runs 2FA-Vault v5.5.0 or higher.
             // It must not be used to check if some preferences are locked.
             settingStore.hasLockedPreferences = preferences.some(p => p.hasOwnProperty('locked'))
             settingStore.lockedPreferences.length = 0
@@ -162,7 +162,7 @@ export const usePreferenceStore = defineStore('preferences', () => {
                 if (preference.key == 'lang') this.applyLanguage()
             }
 
-            // The 'locked' property exists since 2FAuth v5.5.O only
+            // The 'locked' property exists since 2FA-Vault v5.5.O only
             if (preference.hasOwnProperty('locked') && preference.locked == true) {
                 settingStore.lockedPreferences.push(preference.key)
             }

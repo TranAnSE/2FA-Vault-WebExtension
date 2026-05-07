@@ -49,7 +49,7 @@ export default defineConfig({
 
         const action = {
             default_popup: 'src/entrypoints/popup/index.html',
-            default_title: '2FAuth',
+            default_title: '2FA-Vault',
             default_icon: {
                 16: 'icon-16.png',
                 32: 'icon-32.png',

@@ -484,7 +484,7 @@ export default defineContentScript({
          * Initial scan page setup
          */
         async function scanPage(trad) {
-            addButtonCaption = trad.addButtonCaption || 'Add to 2FAuth'
+            addButtonCaption = trad.addButtonCaption || 'Add to 2FA-Vault'
             cancelButtonCaption = trad.cancelButtonCaption || 'Cancel'
             
             await scanForQRCodes()

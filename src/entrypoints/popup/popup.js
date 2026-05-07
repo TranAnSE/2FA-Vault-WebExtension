@@ -13,7 +13,7 @@ import './assets/popup.scss'
 
 const popup = createApp(Popup)
 
-// Injected immutable properties (as per the 2FAuth webapp)
+// Injected immutable properties (as per the 2FA-Vault webapp)
 const $2fauth = {
     context: 'webext',
     version: 'x.y.z',
