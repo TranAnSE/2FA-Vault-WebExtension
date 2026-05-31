@@ -290,8 +290,6 @@
      */
     // TODO : Delegate this to the store or a global watcher
     function saveActiveGroup(newActiveGroupId) {
-        twofaccounts.groupLessOnly = false
-
         // When invoked by GroupSwitch event,  newActiveGroupId should
         // be the same as preferenceStore.activeGroup because of the v-model
         // binding.
@@ -327,7 +325,7 @@
                     </div>
                     <div v-else>
                         <button type="button" id="btnShowGroupSwitch" :title="$t('tooltip.show_group_selector')" tabindex="1" class="button is-text is-like-text has-text-grey-dark" :class="{'has-text-grey' : mode != 'dark'}" @click.stop="showGroupSwitch = !showGroupSwitch">
-                            <template v-if="twofaccounts.groupLessOnly">
+                            <template v-if="parseInt(preferenceStore.activeGroup) == -1">
                                 {{ $t('label.group_less') }} ({{ twofaccounts.filteredCount }})&nbsp;
                             </template>
                             <template v-else-if="groups.current">
