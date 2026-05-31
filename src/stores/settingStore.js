@@ -18,6 +18,8 @@ export const useSettingStore = defineStore('settings', () => {
     const isConfigured = computed(() => hostUrl.value.length > 0)
     const hasFeature_showNextOtp = computed(() => hasLockedPreferences.value)
     const hasFeature_iconPack = computed(() => hasFeature('iconPack'))
+    const hasFeature_sharing = computed(() => hasFeature('sharing'))
+    const hasFeature_allUsersSharingScope = computed(() => hasFeature('allUsersSharingScope'))
 
     // ACTIONS
 
@@ -72,6 +74,8 @@ export const useSettingStore = defineStore('settings', () => {
         isConfigured,
         hasFeature_showNextOtp,
         hasFeature_iconPack,
+        hasFeature_sharing,
+        hasFeature_allUsersSharingScope,
 
         // ACTIONS
         $reset,
