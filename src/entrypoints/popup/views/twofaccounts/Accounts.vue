@@ -10,7 +10,7 @@
     import { useTwofaccounts } from '@popup/stores/twofaccounts'
     import { useGroups } from '@popup/stores/groups'
     import { UseColorMode } from '@vueuse/components'
-    import { LucideLoaderCircle, LucideEye, LucideEyeOff, LucideCircleAlert, LucideChevronDown } from 'lucide-vue-next'
+    import { LucideLoaderCircle, LucideEye, LucideEyeOff, LucideCircleAlert, LucideChevronDown, LucideUserCheck, LucideUsers } from '@lucide/vue'
     import { Dots, OtpDisplay, DotsController, Spinner, useVisiblePassword, GroupSwitch } from '@2fauth/ui'
 
     const { t } = useI18n()
@@ -27,6 +27,7 @@
     const isRenewingOTPs = ref(false)
     const renewedPeriod = ref(null)
     const opacities = ref({})
+    const visibleAccount = ref(null)
     
     const otpDisplay = ref(null)
     const accountParams = ref({
@@ -61,6 +62,8 @@
         accountParams.value.service = account.service
         accountParams.value.account = account.account
         accountParams.value.icon = account.icon
+
+        visibleAccount.value = account
 
         nextTick().then(() => {
             showOtpInModal.value = true
@@ -328,6 +331,12 @@
                             <template v-if="parseInt(preferenceStore.activeGroup) == -1">
                                 {{ $t('label.group_less') }} ({{ twofaccounts.filteredCount }})&nbsp;
                             </template>
+                            <template v-else-if="settingStore.hasFeature_sharing && parseInt(preferenceStore.activeGroup) == -2">
+                                {{ $t('label.shared_by_me') }} ({{ twofaccounts.filteredCount }})&nbsp;
+                            </template>
+                            <template v-else-if="settingStore.hasFeature_sharing && parseInt(preferenceStore.activeGroup) == -3">
+                                 {{ $t('label.shared_with_me') }} ({{ twofaccounts.filteredCount }})&nbsp;
+                            </template>
                             <template v-else-if="groups.current">
                                 {{ groups.current }} ({{ twofaccounts.filteredCount }})&nbsp;
                             </template>
@@ -345,8 +354,8 @@
                     v-model:is-visible="showGroupSwitch"
                     v-model:active-group="preferenceStore.activeGroup"
                     :groups="groups.items"
-                    @active-group-changed="saveActiveGroup"
-                    @show-group-less="twofaccounts.groupLessOnly = true">
+                    :useShare="settingStore.hasFeature_sharing"
+                    @active-group-changed="saveActiveGroup">
                 </GroupSwitch>
                 <!-- show accounts list -->
                 <div v-if="showAccounts == true">
@@ -356,12 +365,23 @@
                             <div class="tfa-list column is-narrow" v-for="account in twofaccounts.filtered" :key="account.id">
                                 <div class="tfa-container">
                                     <div tabindex="0" class="tfa-cell tfa-content is-size-4" @click.exact="showOrCopy(account)" @keyup.enter="showOrCopy(account)" @click.ctrl="getAndCopyOTP(account)" role="button">  
-                                        <div class="tfa-text has-ellipsis">
+                                        <div class="tfa-text has-ellipsis is-clickable">
                                             <img v-if="account.icon && preferenceStore.showAccountsIcons" role="presentation" class="tfa-icon" :src="settingStore.hostUrl + '/storage/icons/' + account.icon" alt="">
                                             <img v-else-if="account.icon == null && preferenceStore.showAccountsIcons" role="presentation" class="tfa-icon" :src="settingStore.hostUrl + '/storage/noicon.svg'" alt="">
                                             {{ account.service ? account.service : $t('message.no_service') }}
                                             <LucideCircleAlert class="has-text-danger ml-2" v-if="account.account === $t('error.indecipherable')" />
-                                            <span class="is-block has-ellipsis is-family-primary is-size-6 is-size-7-mobile has-text-grey ">{{ account.account }}</span>
+                                            <span class="is-block has-ellipsis is-family-primary is-size-6 is-size-7-mobile has-text-grey ">
+                                                <span v-if="settingStore.hasFeature_sharing && account.is_borrowed" :title="$t('tooltip.this_account_is_shared_by_x_with_you', { username: account.borrowed_by })" class="tag p-1 mr-1" :class="mode == 'dark' ? 'is-black is-opacity-4':'is-light is-white'" >
+                                                    @
+                                                </span>
+                                                <span v-else-if="settingStore.hasFeature_sharing && account.is_shared" :title="$t('tooltip.this_account_is_shared_with_specific_users')" class="tag p-1 mr-1" :class="mode == 'dark' ? 'is-black is-opacity-4':'is-light is-white'" >
+                                                    <LucideUserCheck class="icon-size-0-75" />
+                                                </span>
+                                                <span v-else-if="settingStore.hasFeature_sharing && settingStore.hasFeature_allUsersSharingScope && account.is_shared_with_all" :title="$t('tooltip.this_account_is_shared_with_all')" class="tag p-1 mr-1" :class="mode == 'dark' ? 'is-black is-opacity-4':'is-light is-white'" >
+                                                    <LucideUsers class="icon-size-0-75" />
+                                                </span>
+                                                {{ account.account }}
+                                            </span>
                                         </div>
                                     </div>
                                     <transition name="popLater">
@@ -467,20 +487,27 @@
         </StackLayout>
         <!-- otp modal -->
         <Modal v-model:is-active="showOtpInModal">
-            <OtpDisplay
-                ref="otpDisplay"
-                :accountParams="accountParams"
-                :preferences="preferenceStore.$state"
-                :twofaccountService="twofaccountService"
-                :can_showNextOtp="settingStore.hasFeature_showNextOtp"
-                :iconPathPrefix="settingStore.hostUrl"
-                @please-close-me="showOtpInModal = false"
-                @please-clear-search="twofaccounts.filter = ''"
-                @kickme="lockExtension"
-                @please-update-activeGroup="(newActiveGroup) => preferenceStore.activeGroup = newActiveGroup"
-                @otp-copied-to-clipboard="notify.success({ text: t('notification.copied_to_clipboard') })"
-                @error="(error) => errorHandler.show(error)"
-            />
+            <template #default>
+                <OtpDisplay
+                    ref="otpDisplay"
+                    :accountParams="accountParams"
+                    :preferences="preferenceStore.$state"
+                    :twofaccountService="twofaccountService"
+                    :can_showNextOtp="settingStore.hasFeature_showNextOtp"
+                    :iconPathPrefix="settingStore.hostUrl"
+                    @please-close-me="showOtpInModal = false; showFooterMenu = false"
+                    @please-clear-search="twofaccounts.filter = ''"
+                    @kickme="lockExtension"
+                    @please-update-activeGroup="(newActiveGroup) => preferenceStore.activeGroup = newActiveGroup"
+                    @otp-copied-to-clipboard="notify.success({ text: t('notification.copied_to_clipboard') })"
+                    @error="(error) => errorHandler.show(error)"
+                />
+            </template>
+            <template #footer-subpart>
+                <span v-if="showOtpInModal && settingStore.hasFeature_sharing && visibleAccount.is_borrowed" class="has-text-grey">
+                    {{ $t('message.shared_by_x', { username: visibleAccount.borrowed_by }) }}
+                </span>
+            </template>
         </Modal>
         <!-- dots controllers -->
         <span v-if="!preferenceStore.getOtpOnRequest">
