@@ -1,7 +1,7 @@
 <script setup>
     import { UseColorMode } from '@vueuse/components'
     import { openUrlInNewTab } from '@popup/composables/helpers'
-    import { LucideGraduationCap, LucideFlaskConical } from 'lucide-vue-next'
+    import { LucideGraduationCap, LucideFlaskConical } from '@lucide/vue'
     import { useNotify, TabBar } from '@2fauth/ui'
     import tabs from './tabs'
 

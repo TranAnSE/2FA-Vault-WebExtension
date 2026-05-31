@@ -1,5 +1,5 @@
 <script setup>
-    import { LucideScanQrCode } from 'lucide-vue-next'
+    import { LucideScanQrCode } from '@lucide/vue'
     
 </script>
 

@@ -6,7 +6,7 @@
     import { isFilled, isHttpUrl } from '@popup/composables/validators'
     import userService from '@popup/services/userService'
     import { FormButtons } from '@2fauth/formcontrols'
-    import { LucideCheck } from 'lucide-vue-next'
+    import { LucideCheck } from '@lucide/vue'
     import { detect } from 'detect-browser'
     
     const { t } = useI18n()

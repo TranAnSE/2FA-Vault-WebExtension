@@ -1,6 +1,6 @@
 <script setup>
     import { openUrlInNewTab } from '@popup/composables/helpers'
-    import { LucideExternalLink } from 'lucide-vue-next'
+    import { LucideExternalLink } from '@lucide/vue'
 
     const router = useRouter()
     
