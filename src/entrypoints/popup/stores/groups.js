@@ -16,7 +16,7 @@ export const useGroups = defineStore('groups', () => {
     const current = computed(() => {
         const group = items.value.find(item => item.id === parseInt(preferenceStore.activeGroup))
 
-        return group && preferenceStore.activeGroup != 0 ? group.name : null
+        return group && preferenceStore.activeGroup > 0 ? group.name : null
     })
 
     const withoutTheAllGroup = computed(() => items.value.filter(item => item.id > 0))
