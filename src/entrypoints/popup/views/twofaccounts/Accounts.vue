@@ -5,6 +5,7 @@
     import { usePreferenceStore } from '@/stores/preferenceStore'
     import { useSettingStore } from '@/stores/settingStore'
     import { asArray } from '@popup/composables/helpers'
+    import { getPopupHeight } from '@popup/composables/getPopupHeight'
     import { useNotify, SearchBox } from '@2fauth/ui'
     import { useErrorHandler } from '@2fauth/stores'
     import { useTwofaccounts } from '@popup/stores/twofaccounts'
@@ -28,6 +29,7 @@
     const renewedPeriod = ref(null)
     const opacities = ref({})
     const visibleAccount = ref(null)
+    const stackWrapper = useTemplateRef('stackWrapper')
     
     const otpDisplay = ref(null)
     const accountParams = ref({
@@ -277,11 +279,14 @@
         }
         else {
             twofaccounts.fetch().then(() => {
-                // if (twofaccounts.backendWasNewer) {
-                //     notify.info({ text: trans('commons.data_refreshed_to_reflect_server_changes'), duration: 10000 })
-                // }
                 if (twofaccounts.isEmpty) {
                     router.push({ name: 'start'})
+                }
+                else {
+                    nextTick().then(() => {
+                        const availHeight = getPopupHeight()
+                        stackWrapper.value.style.height = availHeight + 'px'
+                    })
                 }
             })
         }
@@ -306,7 +311,7 @@
 
 <template>
     <UseColorMode v-slot="{ mode }">
-    <div class="ext-full-height">
+    <div ref="stackWrapper" class="ext-full-height">
         <StackLayout>
             <template #header v-if="showAccounts || showGroupSwitch">
                 <div class="header">

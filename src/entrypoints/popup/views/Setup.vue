@@ -8,12 +8,14 @@
     import { FormButtons } from '@2fauth/formcontrols'
     import { LucideCheck } from '@lucide/vue'
     import { detect } from 'detect-browser'
+    import { getPopupHeight } from '@popup/composables/getPopupHeight'
     
     const { t } = useI18n()
     const settingStore = useSettingStore()
     const preferenceStore = usePreferenceStore()
     const router = useRouter()
     const notify = useNotify()
+    const stackWrapper = useTemplateRef('stackWrapper')
 
     const _hostUrl = ref('')
     const _apiToken = ref('')
@@ -35,6 +37,11 @@
         // Test if browser supports opening popup programmatically
         const result = await sendMessage('TEST_OPENPOPUP_CAPABILITY', {}, 'background')
         canOpenPopup.value = result.canOpenPopup
+
+        nextTick().then(() => {
+            const availHeight = getPopupHeight()
+            stackWrapper.value.style.height = (availHeight - (availHeight*0.2)) + 'px'
+        })
     })
 
     /**
@@ -194,7 +201,7 @@
 <template>
     <StackLayout :should-grow="false">
         <template #content>
-            <div class="mt-5">
+            <div ref="stackWrapper" class="mt-5">
                 <h1 class="title">{{ $t('heading.setup') }}</h1>
                 <form id="frmExtSetup" @submit.prevent="saveSetup">
                     <FormField v-model="_hostUrl" fieldName="hostUrl" :errorMessage="errors.hostUrl" inputType="text" label="field.hostUrl" help="field.hostUrl.help" />

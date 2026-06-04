@@ -1,17 +1,16 @@
 @import '@2fauth/styles/src/app.scss';
-
-// body, html {
-//   height: 0 !important;
-//   min-height: 0 !important;
-// }
   
+html {
+  scrollbar-width: none;
+}
+
 #popup {
   width:350px;
-  max-height:590px;
 }
 
 .stack-content-wrapper {
   scrollbar-width: none;
+  min-height: 0;
 }
 
 .ext-full-height {
