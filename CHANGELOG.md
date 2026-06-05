@@ -1,5 +1,16 @@
 # Change log
 
+## [1.2.1] - 2026-06-05
+
+### Changed
+
+- Under-the-hood changes to support the incoming 2FA sharing feature
+- Replace tabbar labels with icons
+
+### Fixed
+
+- [issue #539](https://github.com/Bubka/2FAuth/issues/539) Chrome extension displays abnormally at 125% zoom
+
 ## [1.2.0] - 2026-02-27
 
 ### Added
