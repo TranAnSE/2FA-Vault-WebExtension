@@ -7,7 +7,7 @@ async function getRouter() {
 	return module.default
 }
 
-export const httpClientFactory = () => {
+export const httpClientFactory = (type = 'api') => {
 
 	const httpClient = axios.create({
 		withCredentials: false,
@@ -19,15 +19,21 @@ export const httpClientFactory = () => {
             if (Object.prototype.hasOwnProperty.call(config, 'ignoreRequestInterceptor') && config.ignoreRequestInterceptor === true) {
                 return config
             }
-            
+
             const settingStore = useSettingStore()
-            const { pat } = await sendMessage('GET_PAT', { }, 'background')
 
-            config.baseURL = settingStore.hostUrl + '/api/v1'
+            config.baseURL = type === 'web'
+                ? settingStore.hostUrl
+                : settingStore.hostUrl + '/api/v1'
 
-            const headers = { 
-                'Authorization': 'Bearer ' + pat, 
+            const headers = {
                 'X-Requested-With': 'XMLHttpRequest'
+            }
+
+            // Only add PAT authorization for API routes
+            if (type !== 'web') {
+                const { pat } = await sendMessage('GET_PAT', { }, 'background')
+                headers['Authorization'] = 'Bearer ' + pat
             }
             
             if (!(config.data instanceof FormData)) {

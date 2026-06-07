@@ -36,7 +36,6 @@ export default defineConfig({
             'unlimitedStorage',
             'clipboardWrite',
             'alarms',
-            'idle',
             'activeTab',
             'scripting',
             'tabs',
