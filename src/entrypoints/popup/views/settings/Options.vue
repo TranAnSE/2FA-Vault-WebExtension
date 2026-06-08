@@ -4,6 +4,7 @@
     import { useGroups } from '@popup/stores/groups'
     import { useNotify, TabBar } from '@2fauth/ui'
     import { FormCheckbox, FormSelect, FormToggle } from '@2fauth/formcontrols'
+    import { autoFillService } from '@popup/services/autoFillService'
     import tabs from './tabs'
 
     const { t } = useI18n()
@@ -132,7 +133,17 @@
     })
 
     /**
-     * 
+     * Toggles the auto-fill feature and syncs account metadata when enabled
+     */
+    async function toggleAutoFill() {
+        if (settingStore.autoFillEnabled) {
+            await autoFillService.syncAccountsMetadata()
+        }
+        notifySuccess()
+    }
+
+    /**
+     *
      */
     function notifySuccess() {
         notify.success({ type: 'is-success', text: t('notification.setting_saved') })
@@ -234,6 +245,13 @@
                     <FormCheckbox v-model="preferenceStore.revealDottedOTP" @update:model-value="notifySuccess" fieldName="revealDottedOTP" :isLocked="settingStore.lockedPreferences.includes('revealDottedOTP')" :isDisabled="!preferenceStore.showOtpAsDot" label="field.reveal_dotted_otp" help="field.reveal_dotted_otp.help" :isIndented="true" />
                 <!-- show next OTP -->
                 <FormCheckbox v-if="settingStore.hasFeature_showNextOtp" v-model="preferenceStore.showNextOtp" @update:model-value="notifySuccess" fieldName="showNextOtp" :isLocked="settingStore.lockedPreferences.includes('showNextOtp')" label="field.show_next_otp" help="field.show_next_otp.help" />
+
+                <h4 class="title is-4 pt-4">{{ $t('heading.auto_fill') }}</h4>
+                <div class="notification is-info is-size-7 mb-3">
+                    {{ $t('message.auto_fill_security_notice') }}
+                </div>
+                <!-- enable auto-fill -->
+                <FormCheckbox v-model="settingStore.autoFillEnabled" @update:model-value="toggleAutoFill" fieldName="autoFillEnabled" label="field.auto_fill_otp" help="field.auto_fill_otp.help" />
             </form>
         </template>
         <template #footer>

@@ -7,6 +7,7 @@ export const useSettingStore = defineStore('settings', () => {
     // STATE
 
     const hostUrl = ref('')
+    const autoFillEnabled = ref(false)
 
     // Used only if the server runs 2FA-Vault v5.5.0 or higher
     const hasLockedPreferences = ref(false)
@@ -23,6 +24,7 @@ export const useSettingStore = defineStore('settings', () => {
 
     function $reset() {
         hostUrl.value = '';
+        autoFillEnabled.value = false;
         hasLockedPreferences.value = false;
         lockedPreferences.value = [];
     }
@@ -64,6 +66,7 @@ export const useSettingStore = defineStore('settings', () => {
     return {
         // STATE
         hostUrl,
+        autoFillEnabled,
         hasLockedPreferences,
         lockedPreferences,
         featureFlags,

@@ -324,6 +324,123 @@ export default defineBackground({
             }
         })
 
+        // MARK: Form Detection — update badge when a login/2FA page is detected
+        onMessage('PAGE_ANALYZED', async ({ data, sender }) => {
+            swlog('📢 PAGE_ANALYZED message received', data.hostname, 'has2FA:', data.has2FAForm)
+
+            if (!data.has2FAForm && !data.hasLoginForm) return null
+
+            const { autoFillAccounts } = await browser.storage.local.get({ autoFillAccounts: [] })
+            if (!autoFillAccounts?.length) return null
+
+            const domain  = (data.hostname ?? '').replace(/^www\./, '').toLowerCase()
+            const matches = autoFillAccounts.filter(a => {
+                const svc = (a.service ?? '').toLowerCase()
+                return svc && (domain.includes(svc) || svc.includes(domain))
+            })
+
+            if (matches.length === 0) return null
+
+            const tabId = sender?.tabId
+            const badgeText = matches.length > 0 ? String(matches.length) : ''
+
+            if (tabId) {
+                try {
+                    if (import.meta.env.MANIFEST_VERSION === 2) {
+                        await browser.browserAction.setBadgeText({ text: badgeText, tabId })
+                        await browser.browserAction.setBadgeBackgroundColor({ color: '#00d1b2', tabId })
+                    } else {
+                        await browser.action.setBadgeText({ text: badgeText, tabId })
+                        await browser.action.setBadgeBackgroundColor({ color: '#00d1b2', tabId })
+                    }
+                } catch {
+                    // Badge API not available on some platforms
+                }
+            }
+
+            // Store page context for popup to read when opened
+            await browser.storage.session?.set?.({ pageContext: { hostname: data.hostname, matchCount: matches.length, matchIds: matches.map(a => a.id) } })
+
+            return { matchCount: matches.length }
+        })
+
+        // MARK: Auto-Fill
+        onMessage('SYNC_ACCOUNTS_METADATA', async ({ data }) => {
+            swlog('📢 SYNC_ACCOUNTS_METADATA message received')
+            await browser.storage.local.set({ autoFillAccounts: data.accounts })
+            return { status: true }
+        })
+
+        onMessage('REQUEST_AUTO_FILL', async ({ data }) => {
+            swlog('📢 REQUEST_AUTO_FILL message received')
+
+            const lockState = await isLocked()
+            if (lockState?.locked) return null
+
+            if (!state.pat) return null
+
+            const stored = await browser.storage.local.get('local:settings')
+            const hostUrl = stored['local:settings']?.hostUrl
+            if (!hostUrl) return null
+
+            const { autoFillAccounts } = await browser.storage.local.get({ autoFillAccounts: [] })
+            if (!autoFillAccounts?.length) return null
+
+            const matches = matchAccountsToHostname(autoFillAccounts, data.hostname)
+            if (matches.length === 0) return null
+
+            const bestMatch = matches[0].account
+
+            try {
+                const response = await fetch(`${hostUrl}/api/v1/twofaccounts/${bestMatch.id}/otp`, {
+                    headers: {
+                        'Authorization': `Bearer ${state.pat}`,
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Content-Type': 'application/json',
+                    },
+                })
+
+                if (!response.ok) return null
+
+                const otpData = await response.json()
+                return {
+                    otp: otpData.password,
+                    accountId: bestMatch.id,
+                    service: bestMatch.service,
+                }
+            } catch (e) {
+                swlog('❌ Auto-fill OTP fetch failed:', e)
+                return null
+            }
+        })
+
+        function matchAccountsToHostname(accounts, hostname) {
+            const domain = (hostname || '').replace(/^www\./, '').toLowerCase()
+
+            return accounts
+                .map(account => ({
+                    account,
+                    score: calcAutoFillScore(account, domain),
+                }))
+                .filter(m => m.score > 0)
+                .sort((a, b) => b.score - a.score)
+        }
+
+        function calcAutoFillScore(account, domain) {
+            const service = (account.service || '').toLowerCase()
+            const accountName = (account.account || '').toLowerCase()
+            let score = 0
+
+            if (service) {
+                if (domain === service) score += 120
+                else if (domain.includes(service)) score += 100
+                else if (service.includes(domain)) score += 80
+            }
+            if (accountName && domain.includes(accountName)) score += 30
+
+            return score
+        }
+
         //  MARK: Loggers
         // /**
         //  * Debug logging
