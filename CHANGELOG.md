@@ -1,5 +1,16 @@
 # Change log
 
+## [1.2.1] - 2026-06-14
+
+### Added
+
+- TOTP Countdown Badge: the extension badge now shows the remaining seconds for the current one-time password of the active account, refreshed via an alarm-based countdown. Pairs with the existing account-count badge.
+- Global Copy-OTP Keyboard Shortcut: `Ctrl+Shift+Y` copies the current OTP of the active account to the clipboard from any page, implemented through the commands API with an offscreen document relay (MV3 service-worker safe).
+
+### Known Issues
+
+- `npm run build` fails due to a stale `@2fauth/ui` dist in `2FA-Vault-Components` (missing `StackLayout` export). Pre-existing and unrelated to this release; tracked in the components repo.
+
 ## [1.2.0] - 2026-02-27
 
 ### Added

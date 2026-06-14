@@ -2,6 +2,7 @@
     import { onMessage, sendMessage } from 'webext-bridge/popup'
     import ActionButtons from '@popup/components/ActionButtons.vue'
     import twofaccountService from '@popup/services/twofaccountService'
+    import { autoFillService } from '@popup/services/autoFillService'
     import { createLocalOtpService } from '@popup/services/localOtpService'
     import { usePreferenceStore } from '@/stores/preferenceStore'
     import { useSettingStore } from '@/stores/settingStore'
@@ -82,6 +83,9 @@
      * Shows an OTP in a modal or directly copies it to the clipboard
      */
      async function showOrCopy(account) {
+        // Track this account as the most-recently-viewed one (for the global copy-otp shortcut)
+        sendMessage('set-last-account', { id: account.id }, 'background').catch(() => {})
+
         if (!preferenceStore.getOtpOnRequest && account.otp_type.includes('totp')) {
             copyToClipboard(account.otp.password)
         }
@@ -120,13 +124,16 @@
      * Gets a fresh OTP and copies it
      */
     async function getAndCopyOTP(account) {
+        // Track this account as the most-recently-viewed one (for the global copy-otp shortcut)
+        sendMessage('set-last-account', { id: account.id }, 'background').catch(() => {})
+
         return otpService.getOtpById(account.id).then(response => {
             let otp = response.data
             copyToClipboard(otp.password)
 
             if (otp.otp_type == 'hotp') {
                 let hotpToIncrement = twofaccounts.items.find((acc) => acc.id == account.id)
-                
+
                 // TODO : à koi ça sert ?
                 if (hotpToIncrement != undefined) {
                     hotpToIncrement.counter = otp.counter
@@ -318,6 +325,15 @@
                 }
             })
         }
+
+        // Keep the background's lightweight account metadata cache fresh so the TOTP
+        // countdown badge and the copy-otp shortcut work without relying on auto-fill being on.
+        nextTick().then(() => {
+            if (twofaccounts.items.length) {
+                autoFillService.syncAccountsMetadata().catch(() => {})
+            }
+        })
+
         groups.fetch()
     })
 

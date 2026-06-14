@@ -55,6 +55,10 @@
     })
 
     onMounted(async () => {
+        // Ask the background to refresh the TOTP countdown badge immediately on popup open
+        // (the 1-minute alarm alone would otherwise leave it stale).
+        sendMessage('refresh-badge', {}, 'background').catch(() => {})
+
         const result = await sendMessage('IS_THERE_QR', {}, 'background')
 
         if (result.hasQR) {

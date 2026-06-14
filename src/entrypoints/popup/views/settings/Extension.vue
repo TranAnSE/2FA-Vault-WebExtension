@@ -20,6 +20,11 @@
         newPassword: ''
     })
     const isRunning = ref(false)
+    // Keyboard shortcut — Chrome exposes chrome://extensions/shortcuts to remap;
+    // Firefox manages shortcuts via the Add-ons Manager instead.
+    const isChromium = ref(import.meta.env.MANIFEST_VERSION === 3)
+    const shortcutsUrl = 'chrome://extensions/shortcuts'
+    const shortcutLabel = ref('Ctrl+Shift+Y')
 
     /**
      * 
@@ -130,6 +135,21 @@
                             {{  $t('label.save') }}
                         </VueButton>
                     </div>
+                </div>
+            </form>
+            <!-- keyboard shortcuts -->
+            <form>
+                <h4 class="title is-4 pt-6">{{ $t('heading.keyboard_shortcuts') }}</h4>
+                <FormField v-model="shortcutLabel" fieldName="copyOtpShortcut" :isDisabled="true" inputType="text" label="label.copy_otp_shortcut" />
+                <div class="notification is-info is-size-7 mb-3">
+                    {{ $t('message.copy_otp_shortcut_default') }}
+                    <span class="is-block mt-2">
+                        <template v-if="isChromium">{{ $t('message.copy_otp_shortcut_chrome') }}</template>
+                        <template v-else>{{ $t('message.copy_otp_shortcut_firefox') }}</template>
+                    </span>
+                </div>
+                <div v-if="isChromium" class="field">
+                    <a :href="shortcutsUrl" target="_blank" rel="noopener">{{ $t('link.customize_shortcuts') }}</a>
                 </div>
             </form>
             <!-- danger zone -->

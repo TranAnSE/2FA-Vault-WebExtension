@@ -19,7 +19,8 @@ export default defineBackground({
             locked: false,
             lastActiveAt: null,
             kickAfter: null,
-            pat: ''
+            pat: '',
+            lastViewedAccountId: null
         }
 
         // Detection of system color scheme 
@@ -75,6 +76,13 @@ export default defineBackground({
 
         // Cet évènement est déclenché lorsque l'alarme se déclenche.
         browser.alarms.onAlarm.addListener(handleAlarms)
+
+        // MARK: Badge — periodic TOTP countdown badge tick (1 min, MV3 minimum)
+        // Re-created on every SW boot; fires handleBadgeUpdate() to refresh the toolbar badge.
+        browser.alarms.create('totp-badge-tick', { periodInMinutes: 1 })
+
+        // MARK: Shortcut — global keyboard shortcut to copy the most-recently-viewed OTP
+        browser.commands.onCommand.addListener(handleCommand)
 
         // Lancé lorsque le système change passe à l'état actif, inactif ou vérouillé. L'écouteur d'événement reçoit une chaîne qui a l'une des trois valeurs suivantes :
         //     "vérouillé" si l'écran est vérouillé ou si l'économisateur d'écran s'active
@@ -426,6 +434,21 @@ export default defineBackground({
                 .sort((a, b) => b.score - a.score)
         }
 
+        // MARK: Badge — refresh-badge + set-last-account message handlers
+        onMessage('refresh-badge', () => {
+            swlog('📢 refresh-badge message received')
+            handleBadgeUpdate()
+            return Promise.resolve({ status: true })
+        })
+
+        onMessage('set-last-account', ({ data }) => {
+            swlog('📢 set-last-account message received')
+            state.lastViewedAccountId = data?.id ?? null
+            // Persist so the shortcut keeps working after the SW is suspended
+            storeState(false).catch(() => {})
+            return Promise.resolve({ status: true })
+        })
+
         function calcAutoFillScore(account, domain) {
             const service = (account.service || '').toLowerCase()
             const accountName = (account.account || '').toLowerCase()
@@ -520,11 +543,244 @@ export default defineBackground({
 
         /**
          * Tells if the user has set an autolock option
-         * 
+         *
          * @returns {boolean}
          */
         function hasAutoLockEnabled() {
             return state.kickAfter == -1 || state.kickAfter > 0
+        }
+
+        // MARK: Badge helpers — TOTP countdown badge on the toolbar icon
+        // Counts accounts whose TOTP will rotate within 10s. Color is derived from the
+        // most-urgent account: red (#ef4444) <=5s, amber (#f59e0b) <=10s, green (#22c55e) otherwise.
+
+        /**
+         * Remaining seconds before the account's TOTP rotates
+         *
+         * @param {object} account
+         * @returns {number}
+         */
+        function remainingSeconds(account) {
+            const period = Number(account?.period) > 0 ? Number(account.period) : 30
+            return period - (Math.floor(Date.now() / 1000) % period)
+        }
+
+        /**
+         * Resolve the toolbar action API (browser.action on MV3, browser.browserAction on MV2 Firefox)
+         *
+         * @returns {browser.browserAction|browser.action}
+         */
+        function getActionApi() {
+            return import.meta.env.MANIFEST_VERSION === 2
+                ? browser.browserAction
+                : browser.action
+        }
+
+        /**
+         * Set the badge text and background color
+         *
+         * @param {number} count
+         * @param {number} urgency
+         */
+        function setBadge(count, urgency) {
+            const text = count > 0 ? String(count) : ''
+            const color = urgency <= 5 ? '#ef4444' : urgency <= 10 ? '#f59e0b' : '#22c55e'
+            try {
+                getActionApi().setBadgeText({ text })
+                getActionApi().setBadgeBackgroundColor({ color })
+            } catch (e) {
+                // Badge API not available on some platforms
+            }
+        }
+
+        /**
+         * Clear the badge text (keeps last background color, harmless)
+         */
+        function clearBadge() {
+            try {
+                getActionApi().setBadgeText({ text: '' })
+            } catch (e) {
+                // Badge API not available on some platforms
+            }
+        }
+
+        /**
+         * Update the toolbar badge based on cached accounts expiring within 10s
+         *
+         * @returns {Promise<void>}
+         */
+        function handleBadgeUpdate() {
+            // On a cold SW boot, state may still hold defaults — load it first so the
+            // locked flag is accurate before deciding whether to show the badge.
+            const ensureState = state.isLoaded ? Promise.resolve() : loadState()
+
+            return ensureState.then(() => {
+                if (state.locked) {
+                    clearBadge()
+                    return
+                }
+
+                // Accounts are cached in storage (synced by the popup), not in the SW state object.
+                return browser.storage.local.get({ autoFillAccounts: [] }).then(({ autoFillAccounts }) => {
+                    const accounts = Array.isArray(autoFillAccounts) ? autoFillAccounts : []
+                    if (!accounts.length) {
+                        clearBadge()
+                        return
+                    }
+
+                    const expiring = accounts.filter(a => a.otp_type == null || String(a.otp_type).includes('totp'))
+                        .filter(a => remainingSeconds(a) <= 10)
+
+                    if (expiring.length === 0) {
+                        clearBadge()
+                        return
+                    }
+
+                    const urgency = Math.min(...expiring.map(remainingSeconds))
+                    setBadge(expiring.length, urgency)
+                }).catch(() => clearBadge())
+            }).catch(() => clearBadge())
+        }
+
+        // MARK: Shortcut helpers — global OTP copy via keyboard shortcut
+
+        /**
+         * Build a basic browser notification
+         *
+         * @param {string} message
+         */
+        function notifyShortcut(message) {
+            try {
+                browser.notifications.create({
+                    type: 'basic',
+                    iconUrl: 'icon-64.png',
+                    title: '2FA-Vault',
+                    message: message,
+                })
+            } catch (e) {
+                // Notifications API not available
+            }
+        }
+
+        /**
+         * Ensure an offscreen document exists (Chrome MV3 only) for clipboard relay
+         *
+         * @returns {Promise<void>}
+         */
+        async function ensureOffscreenDocument() {
+            if (import.meta.env.MANIFEST_VERSION === 2) return
+            if (!browser.offscreen) return
+
+            const existingContexts = await browser.runtime.getContexts({
+                contextTypes: ['OFFSCREEN_DOCUMENT'],
+                documentUrls: [browser.runtime.getURL('offscreen.html')],
+            }).catch(() => [])
+
+            if (existingContexts && existingContexts.length > 0) return
+
+            await browser.offscreen.createDocument({
+                url: 'offscreen.html',
+                reasons: ['CLIPBOARD'],
+                justification: 'Write OTP to clipboard from the keyboard shortcut',
+            }).catch(() => {})
+        }
+
+        /**
+         * Write text to the clipboard — directly on Firefox MV2, via offscreen relay on Chrome MV3
+         *
+         * @param {string} text
+         * @returns {Promise<void>}
+         */
+        async function writeToClipboard(text) {
+            const hasDirectClipboard = typeof navigator !== 'undefined' && !!navigator.clipboard
+
+            if (import.meta.env.MANIFEST_VERSION === 2 || hasDirectClipboard) {
+                // Firefox MV2: direct clipboard access is allowed in the background page.
+                // Some platforms also expose clipboard in the SW, in which case we use it directly.
+                await navigator.clipboard.writeText(text)
+                return
+            }
+
+            // Chrome MV3: clipboard is blocked in the service worker, relay via offscreen document
+            await ensureOffscreenDocument()
+            await browser.runtime.sendMessage({ type: 'clipboard-write', text })
+        }
+
+        /**
+         * Generate the current OTP for an account using the backend (PAT-authenticated)
+         *
+         * The SW does not hold decrypted secrets, so OTP generation is delegated to the
+         * 2FA-Vault backend, exactly like the auto-fill flow.
+         *
+         * @param {object} account
+         * @returns {Promise<{password: string}|null>}
+         */
+        async function generateShortcutOtp(account) {
+            if (!state.pat) return null
+
+            const stored = await browser.storage.local.get('local:settings')
+            const hostUrl = stored['local:settings']?.hostUrl
+            if (!hostUrl) return null
+
+            const response = await fetch(`${hostUrl}/api/v1/twofaccounts/${account.id}/otp`, {
+                headers: {
+                    'Authorization': `Bearer ${state.pat}`,
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Content-Type': 'application/json',
+                },
+            })
+
+            if (!response.ok) return null
+
+            const otpData = await response.json()
+            return otpData?.password ? { password: otpData.password } : null
+        }
+
+        /**
+         * Handle the global 'copy-otp' keyboard command
+         *
+         * @param {string} command
+         */
+        async function handleCommand(command) {
+            if (command !== 'copy-otp') return
+            swlog('⌨️ copy-otp command received')
+
+            // Make sure the SW state (locked flag, pat) is loaded before acting
+            await loadState()
+
+            if (state.locked) {
+                notifyShortcut('Vault is locked')
+                return
+            }
+
+            if (!state.lastViewedAccountId) {
+                notifyShortcut('No recent account — open extension first')
+                return
+            }
+
+            const { autoFillAccounts } = await browser.storage.local.get({ autoFillAccounts: [] })
+            const accounts = Array.isArray(autoFillAccounts) ? autoFillAccounts : []
+            const account = accounts.find(a => String(a.id) === String(state.lastViewedAccountId))
+
+            if (!account) {
+                notifyShortcut('No recent account — open extension first')
+                return
+            }
+
+            try {
+                const otp = await generateShortcutOtp(account)
+                if (!otp?.password) {
+                    notifyShortcut('Failed to generate OTP')
+                    return
+                }
+
+                await writeToClipboard(otp.password)
+                const label = account.service || account.account || 'account'
+                notifyShortcut(`OTP copied for ${label}`)
+            } catch (e) {
+                swlog('❌ copy-otp failed:', e)
+                notifyShortcut('Failed to copy OTP')
+            }
         }
 
         //  MARK: Events
@@ -563,6 +819,8 @@ export default defineBackground({
                         lockNow('handleAlarms() after state loading')
                     })
                 }
+            } else if (alarm.name === 'totp-badge-tick') {
+                handleBadgeUpdate()
             }
         }
 
@@ -792,6 +1050,8 @@ export default defineBackground({
         function lockNow(by = 'unknown') {
             swlog('🔒 locked by ' + by)
             setStateToLocked()
+            // Badge must never show stale TOTP data when the vault is locked
+            clearBadge()
             storeState().then(() => {
                 password = null
                 clearVaultKey().then(() => {

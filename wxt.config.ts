@@ -69,6 +69,15 @@ export default defineConfig({
                 128: 'icon-128.png',
             },
             action: action,
+            commands: {
+                'copy-otp': {
+                    suggested_key: {
+                        default: 'Ctrl+Shift+Y',
+                        mac: 'MacCtrl+Shift+Y',
+                    },
+                    description: '__MSG_shortcutCopyOtpDesc__',
+                },
+            },
         }
 
         if (manifestVersion === 3) {
