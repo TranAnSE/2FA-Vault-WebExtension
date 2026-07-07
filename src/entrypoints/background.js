@@ -23,6 +23,57 @@ export default defineBackground({
             lastViewedAccountId: null
         }
 
+        // --- Brute-force protection for password-gated operations --------
+        // Tracks consecutive failed unlock/check attempts and enforces an
+        // exponential backoff. Counters are persisted alongside state so a
+        // service-worker restart cannot reset the throttle. The key-derivation
+        // (PBKDF2/Argon2id) remains the primary defence, but this raises the
+        // cost of online guessing through the popup UI.
+        const LOCKOUT_STORE = 'lockoutStore'
+        const MAX_ATTEMPTS_BEFORE_BACKOFF = 5   // attempts before delay kicks in
+        const MAX_BACKOFF_MS = 5 * 60 * 1000    // cap at 5 minutes
+
+        let lockout = { failedAttempts: 0, nextAttemptAt: 0 }
+
+        function loadLockout() {
+            return browser.storage.local.get({ [LOCKOUT_STORE]: null }).then(stores => {
+                const stored = stores[LOCKOUT_STORE]
+                if (stored && typeof stored.failedAttempts === 'number') {
+                    lockout = stored
+                }
+                return lockout
+            }, () => lockout)
+        }
+
+        function saveLockout() {
+            return browser.storage.local.set({ [LOCKOUT_STORE]: lockout }).then(() => true, () => false)
+        }
+
+        /**
+         * Returns null if an attempt is allowed now, otherwise the ms
+         * remaining until the next attempt is permitted.
+         */
+        function getLockoutRemainingMs() {
+            if (lockout.failedAttempts < MAX_ATTEMPTS_BEFORE_BACKOFF) return 0
+            return Math.max(0, lockout.nextAttemptAt - Date.now())
+        }
+
+        function recordFailedAttempt() {
+            lockout.failedAttempts += 1
+            if (lockout.failedAttempts >= MAX_ATTEMPTS_BEFORE_BACKOFF) {
+                // Exponential backoff: 1s, 2s, 4s, 8s ... capped at MAX_BACKOFF_MS
+                const exponent = lockout.failedAttempts - MAX_ATTEMPTS_BEFORE_BACKOFF
+                const delay = Math.min(MAX_BACKOFF_MS, Math.pow(2, exponent) * 1000)
+                lockout.nextAttemptAt = Date.now() + delay
+            }
+            return saveLockout()
+        }
+
+        function resetLockout() {
+            lockout = { failedAttempts: 0, nextAttemptAt: 0 }
+            return saveLockout()
+        }
+
         // Detection of system color scheme 
         if (import.meta.env.MANIFEST_VERSION === 2) {
             // FF & Safari only for now
@@ -342,10 +393,12 @@ export default defineBackground({
             if (!autoFillAccounts?.length) return null
 
             const domain  = (data.hostname ?? '').replace(/^www\./, '').toLowerCase()
-            const matches = autoFillAccounts.filter(a => {
-                const svc = (a.service ?? '').toLowerCase()
-                return svc && (domain.includes(svc) || svc.includes(domain))
-            })
+            // SECURITY: Use the same scoring function as the actual auto-fill
+            // selection, so the badge count reflects only safe matches.
+            const matches = autoFillAccounts
+                .map(a => ({ account: a, score: calcAutoFillScore(a, domain) }))
+                .filter(m => m.score > 0)
+                .map(m => m.account)
 
             if (matches.length === 0) return null
 
@@ -449,17 +502,95 @@ export default defineBackground({
             return Promise.resolve({ status: true })
         })
 
+        /**
+         * Extract the registrable (eTLD+1) domain from a hostname.
+         * Falls back to the host itself when extraction fails.
+         *
+         * SECURITY: We compare accounts against the registrable domain rather
+         * than a raw substring test, so a service named "it" can no longer
+         * match every `*.it` site, and a service named "google" no longer
+         * matches every Google subdomain indiscriminately.
+         *
+         * @param {string} hostname - e.g. "mail.google.com"
+         * @returns {string} e.g. "google.com"
+         */
+        function getRegistrableDomain(hostname) {
+            const host = (hostname || '').replace(/^www\./, '').toLowerCase()
+            if (!host) return ''
+
+            // Simple suffix list covering the most common multi-part TLDs.
+            // This avoids pulling in the full PSL; for the purpose of OTP
+            // auto-fill matching, conservative is safer than exhaustive.
+            const multiPartTlds = [
+                '.co.uk', '.org.uk', '.gov.uk', '.ac.uk',
+                '.co.jp', '.or.jp', '.ne.jp', '.ac.jp',
+                '.com.au', '.net.au', '.org.au',
+                '.co.nz', '.co.kr', '.co.in', '.org.in', '.net.in',
+                '.com.br', '.com.cn', '.com.tw', '.com.hk', '.com.sg',
+                '.co.za', '.com.mx', '.com.ar',
+            ]
+            for (const suffix of multiPartTlds) {
+                if (host.endsWith(suffix)) {
+                    const before = host.slice(0, -suffix.length)
+                    const parts = before.split('.')
+                    return parts[parts.length - 1] + suffix
+                }
+            }
+            const parts = host.split('.')
+            if (parts.length <= 2) return host
+            return parts.slice(-2).join('.')
+        }
+
+        /**
+         * Score how strongly an account matches the current page domain.
+         *
+         * SECURITY: Matching is based on registrable-domain equality and
+         * explicit label containment — never the unsafe bidirectional
+         * `domain.includes(service) || service.includes(domain)` test that
+         * let short service names ("it", "o", "go") match nearly any host.
+         *
+         * Scoring tiers:
+         *   - exact registrable-domain match:      120
+         *   - service equals a full host label:    100
+         *   - service equals a dot-delimited part:  70
+         *   - account name contains domain label:   30
+         */
         function calcAutoFillScore(account, domain) {
-            const service = (account.service || '').toLowerCase()
-            const accountName = (account.account || '').toLowerCase()
+            const service = (account.service || '').toLowerCase().trim()
+            const accountName = (account.account || '').toLowerCase().trim()
+            const regDomain = getRegistrableDomain(domain)
+
+            // Reject too-short service names entirely — they match too much.
+            if (service.length < 3) return 0
+
             let score = 0
 
             if (service) {
-                if (domain === service) score += 120
-                else if (domain.includes(service)) score += 100
-                else if (service.includes(domain)) score += 80
+                if (regDomain && service === regDomain) {
+                    score += 120
+                } else if (domain === service) {
+                    score += 120
+                } else {
+                    // Compare service against full dot-delimited labels of the
+                    // host, e.g. for "login.example.com" the labels are
+                    // ["login", "example", "com", "example.com", "login.example.com"].
+                    const labels = []
+                    const parts = domain.split('.')
+                    for (let i = 0; i < parts.length; i++) {
+                        labels.push(parts.slice(i).join('.'))
+                    }
+                    if (labels.includes(service)) {
+                        score += 100
+                    } else if (regDomain && service.endsWith('.' + regDomain)) {
+                        // service is a deeper subdomain of the page, e.g.
+                        // service "accounts.google.com" on page "google.com".
+                        score += 70
+                    }
+                }
             }
-            if (accountName && domain.includes(accountName)) score += 30
+            if (accountName && accountName.length >= 3 && domain.split('.').includes(accountName)) {
+                score += 30
+            }
 
             return score
         }
@@ -934,17 +1065,30 @@ export default defineBackground({
          * Save the workers state in storage
          * MARK: storeState()
          *
+         * SECURITY: The decrypted PAT (`state.pat`) is NEVER persisted to
+         * `browser.storage.local`. Only the opaque metadata (lock state,
+         * activity timestamps, last viewed account) is stored. The PAT
+         * remains in service-worker memory only and is rebuilt from the
+         * encrypted `cryptoStore.encryptedApiToken` payload during unlock.
+         * This prevents anyone with access to the extension storage files
+         * from recovering a usable bearer token.
+         *
          * @param updateLastActiveAt
          * @returns {Promise<boolean>}
          */
         function storeState(updateLastActiveAt = true) {
             swlog('🖫 Storing state')
-            
+
             if (updateLastActiveAt) {
                 state.lastActiveAt = Date.now()
             }
 
-            return browser.storage.local.set({ [EXTSTATE_STORE]: state }).then(() => true, () => false)
+            // Strip the decrypted PAT before persisting. The PAT lives only
+            // in SW memory after a successful unlock(); on next startup the
+            // vault is loaded as locked and the user must unlock again.
+            const persistable = { ...state, pat: '' }
+
+            return browser.storage.local.set({ [EXTSTATE_STORE]: persistable }).then(() => true, () => false)
         }
 
         /**
@@ -974,13 +1118,17 @@ export default defineBackground({
          * @returns {Promise<{[p: string]: any} | *>}
          */
         function loadState() {
+            // Load lockout counters in parallel so the brute-force gate is
+            // ready before any unlock/checkPassword call can run.
+            const loadLockoutPromise = loadLockout()
+
             return browser.storage.local.get({ [EXTSTATE_STORE]: null }).then(stores => {
                 state = stores[EXTSTATE_STORE]
 
                 if (state !== null) {
                     state.isLoaded = true
                     swlog('State loaded (from store)')
-                    
+
                     // We force reload the kickAfter delay from the preferences store
                     return setKickAfterDelayUsingPreferenceStore().then(() => {
                         // We update the state to locked if kickAfter delay is elapsed since last activity
@@ -994,7 +1142,7 @@ export default defineBackground({
             },
             () => {
                 return loadDefaultState()
-            })
+            }).then(result => loadLockoutPromise.then(() => result))
         }
 
         /**
@@ -1182,6 +1330,16 @@ export default defineBackground({
         function unlockExt() {
             swlogTitle('UNLOCKING EXTENSION')
 
+            // Brute-force gate: refuse while a backoff window is active.
+            const remaining = getLockoutRemainingMs()
+            if (remaining > 0) {
+                return Promise.resolve({
+                    status: false,
+                    reason: 'error.too_many_attempts',
+                    retryAfterMs: remaining,
+                })
+            }
+
             return browser.storage.local.get({ [CRYPTO_STORE]: {} }).then(stores => {
                 if (stores && stores.hasOwnProperty(CRYPTO_STORE) && stores[CRYPTO_STORE]) {
                     // encryptionParams should already be fed during the popup opening but
@@ -1205,6 +1363,7 @@ export default defineBackground({
                             state.pat = decipheredPat
                             state.locked = false
                             swlog('🔓 Extension is now unlocked')
+                            resetLockout()
                             return storeState().then(() => {
                                 return browser.alarms.clear('lock-extension').then((cleared) => {
                                     if (cleared) swlog('⏰ lock-extension alarm cleared by UnlockExt() at ' + state.lastActiveAt)
@@ -1215,10 +1374,12 @@ export default defineBackground({
                             })
                         }, (result) => {
                             swlog('🔃 ❌ decryptPat() rejected: ' + result)
+                            recordFailedAttempt()
                             return { status: false, reason: 'error.failed_to_decipher_pat' }
                         })
                     }, () => {
                         swlog('🔀 ❌ Cannot unlock: Couldn\'t derive key')
+                        recordFailedAttempt()
                         return { status: false, reason: 'error.failed_to_derive_key' }
                     })
                 }, () => {
@@ -1240,24 +1401,38 @@ export default defineBackground({
         function checkPassword(pwd) {
             swlogTitle('CHECKING PASSWORD')
 
+            // Brute-force gate: refuse while a backoff window is active.
+            const remaining = getLockoutRemainingMs()
+            if (remaining > 0) {
+                return Promise.resolve({
+                    status: false,
+                    reason: 'error.too_many_attempts',
+                    retryAfterMs: remaining,
+                })
+            }
+
             return browser.storage.local.get({ [CRYPTO_STORE]: {} }).then(stores => {
                 if (!stores || stores.hasOwnProperty(CRYPTO_STORE) === false) {
                     swlog('❌ Cannot validate password: Failed to retrieve crypto store data')
                     return { status: false, reason: 'error.failed_to_retrieve_encryption_store_data' }
                 }
-                
+
                 const _pat = stores[CRYPTO_STORE]['encryptedApiToken'] || ''
 
                 return deriveKey(pwd, encryptionParams.salt).then(encryptionKey => {
                     return decryptPat(_pat, encryptionKey).then(() => {
+                        resetLockout()
                         return { status: true }
                     }, () => {
+                        recordFailedAttempt()
                         return { status: false }
                     })
                 }, () => {
+                    recordFailedAttempt()
                     return { status: false }
                 })
             }, () => {
+                recordFailedAttempt()
                 return { status: false }
             })
         }

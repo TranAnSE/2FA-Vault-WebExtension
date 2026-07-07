@@ -179,12 +179,6 @@
         else notify.alert({ text: t('error.failed_to_set_autolock_delay') })
     }
 
-    onBeforeRouteLeave((to) => {
-        if (! to.name.startsWith('settings.')) {
-            notify.clear()
-        }
-    })
-
 </script>
 
 <template>

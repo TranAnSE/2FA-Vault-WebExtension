@@ -4,12 +4,18 @@ import { createPinia } from 'pinia'
 import { createPersistedStatePlugin } from 'pinia-plugin-persistedstate-2'
 import Popup from './Popup.vue'
 import router from './router'
+import { configureErrorHandlerRouter } from '@2fauth/stores'
 // import { devtools } from '@vue/devtools'
 
 // if ('development' == process.env.NODE_ENV)
 //     devtools.connect() // default is 'http://localhost:8098'
 
 import './assets/popup.scss'
+
+// Register the router with the errorHandler store so its show()/notFound()
+// actions can navigate when invoked from Axios interceptors in service
+// modules, where `this.$router` is unavailable in a setup store.
+configureErrorHandlerRouter(router)
 
 const popup = createApp(Popup)
 
