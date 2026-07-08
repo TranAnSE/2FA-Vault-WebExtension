@@ -72,7 +72,12 @@
             pwd.value = password
             await unlock()
         } catch (e) {
-            notify.alert({ text: t('error.biometric_unlock_failed') + ': ' + e.message })
+            // Surface a clear, actionable message when the browser lacks the
+            // WebAuthn PRF extension required by the new biometric model.
+            const message = (e && /PRF/i.test(e.message))
+                ? t('error.biometric_prf_unsupported')
+                : t('error.biometric_unlock_failed') + ': ' + (e?.message ?? '')
+            notify.alert({ text: message })
         } finally {
             isBiometricBusy.value = false
             pwd.value = null
