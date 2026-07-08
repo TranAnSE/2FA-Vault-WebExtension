@@ -4,5 +4,8 @@
     },
     "extDescription": {
         "message": "Generate your 2FA passwords with 2FA-Vault directly from your browser"
+    },
+    "shortcutCopyOtpDesc": {
+        "message": "포커스된 입력 필드의 OTP 복사"
     }
 }

@@ -1,8 +1,11 @@
 {
     "extName": {
-      "message": "2FA-Vault"
+        "message": "2FA-Vault"
     },
     "extDescription": {
-      "message": "Générez vos codes 2FA avec 2FA-Vault directement depuis votre navigateur"
+        "message": "Générez vos codes 2FA avec 2FA-Vault directement depuis votre navigateur"
+    },
+    "shortcutCopyOtpDesc": {
+        "message": "Copier l’OTP du champ de saisie ayant le focus"
     }
 }
