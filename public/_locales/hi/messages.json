@@ -4,5 +4,8 @@
     },
     "extDescription": {
         "message": "Generate your 2FA passwords with 2FA-Vault directly from your browser"
+    },
+    "shortcutCopyOtpDesc": {
+        "message": "फ़ोकस किए गए इनपुट फ़ील्ड का OTP कॉपी करें"
     }
 }

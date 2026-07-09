@@ -4,5 +4,8 @@
     },
     "extDescription": {
         "message": "Generate your 2FA passwords with 2FA-Vault directly from your browser"
+    },
+    "shortcutCopyOtpDesc": {
+        "message": "复制焦点输入字段的 OTP"
     }
 }
