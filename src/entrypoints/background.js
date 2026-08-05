@@ -1,4 +1,5 @@
 import { onMessage, sendMessage } from 'webext-bridge/background'
+import { createLockout } from '../background/lockout.js'
 
 export default defineBackground({
 
@@ -24,54 +25,31 @@ export default defineBackground({
         }
 
         // --- Brute-force protection for password-gated operations --------
-        // Tracks consecutive failed unlock/check attempts and enforces an
-        // exponential backoff. Counters are persisted alongside state so a
-        // service-worker restart cannot reset the throttle. The key-derivation
-        // (PBKDF2/Argon2id) remains the primary defence, but this raises the
-        // cost of online guessing through the popup UI.
-        const LOCKOUT_STORE = 'lockoutStore'
-        const MAX_ATTEMPTS_BEFORE_BACKOFF = 5   // attempts before delay kicks in
-        const MAX_BACKOFF_MS = 5 * 60 * 1000    // cap at 5 minutes
-
-        let lockout = { failedAttempts: 0, nextAttemptAt: 0 }
+        // The state machine lives in src/background/lockout.js so it can be
+        // unit-tested in isolation; the background wires it up against the
+        // real browser.storage.local. Thin wrappers below keep the existing
+        // call sites (loadLockout/getLockoutRemainingMs/recordFailedAttempt/
+        // resetLockout) unchanged.
+        const lockoutController = createLockout({ storage: browser.storage.local })
 
         function loadLockout() {
-            return browser.storage.local.get({ [LOCKOUT_STORE]: null }).then(stores => {
-                const stored = stores[LOCKOUT_STORE]
-                if (stored && typeof stored.failedAttempts === 'number') {
-                    lockout = stored
-                }
-                return lockout
-            }, () => lockout)
-        }
-
-        function saveLockout() {
-            return browser.storage.local.set({ [LOCKOUT_STORE]: lockout }).then(() => true, () => false)
+            return lockoutController.load()
         }
 
         /**
-         * Returns null if an attempt is allowed now, otherwise the ms
-         * remaining until the next attempt is permitted.
+         * Returns 0 if an attempt is allowed now, otherwise the ms remaining
+         * until the next attempt is permitted.
          */
         function getLockoutRemainingMs() {
-            if (lockout.failedAttempts < MAX_ATTEMPTS_BEFORE_BACKOFF) return 0
-            return Math.max(0, lockout.nextAttemptAt - Date.now())
+            return lockoutController.getRemainingMs()
         }
 
         function recordFailedAttempt() {
-            lockout.failedAttempts += 1
-            if (lockout.failedAttempts >= MAX_ATTEMPTS_BEFORE_BACKOFF) {
-                // Exponential backoff: 1s, 2s, 4s, 8s ... capped at MAX_BACKOFF_MS
-                const exponent = lockout.failedAttempts - MAX_ATTEMPTS_BEFORE_BACKOFF
-                const delay = Math.min(MAX_BACKOFF_MS, Math.pow(2, exponent) * 1000)
-                lockout.nextAttemptAt = Date.now() + delay
-            }
-            return saveLockout()
+            return lockoutController.recordFailed()
         }
 
         function resetLockout() {
-            lockout = { failedAttempts: 0, nextAttemptAt: 0 }
-            return saveLockout()
+            return lockoutController.reset()
         }
 
         // Detection of system color scheme 

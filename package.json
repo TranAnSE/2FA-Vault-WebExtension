@@ -18,6 +18,8 @@
         "zip:firefox": "wxt zip -b firefox",
         "postinstall": "wxt prepare",
         "lint": "eslint . --fix",
+        "test": "vitest run",
+        "test:watch": "vitest",
         "get-translations": "node ./scripts/crowdin-get-translations.js"
     },
     "devDependencies": {
@@ -45,6 +47,8 @@
         "pinia-plugin-persistedstate-2": "^2.0.32",
         "sass": "^1.97.3",
         "typescript": "^5.9.3",
+        "vitest": "^4.0.18",
+        "jsdom": "^28.0.0",
         "vue-i18n": "^11.2.8",
         "vue-router": "^5.0.2",
         "webext-bridge": "^6.0.1",
