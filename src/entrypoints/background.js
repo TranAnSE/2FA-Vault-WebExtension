@@ -1,5 +1,10 @@
 import { onMessage, sendMessage } from 'webext-bridge/background'
 import { createLockout } from '../background/lockout.js'
+import {
+    getRegistrableDomain,
+    calcAutoFillScore,
+    matchAccountsToHostname,
+} from '../background/autofillMatch.js'
 
 export default defineBackground({
 
@@ -482,17 +487,11 @@ export default defineBackground({
             }
         })
 
-        function matchAccountsToHostname(accounts, hostname) {
-            const domain = (hostname || '').replace(/^www\./, '').toLowerCase()
-
-            return accounts
-                .map(account => ({
-                    account,
-                    score: calcAutoFillScore(account, domain),
-                }))
-                .filter(m => m.score > 0)
-                .sort((a, b) => b.score - a.score)
-        }
+        // Auto-fill account/domain matching (matchAccountsToHostname,
+        // getRegistrableDomain, calcAutoFillScore) lives in
+        // src/background/autofillMatch.js so it can be unit-tested; the
+        // functions are imported above and used directly by the message
+        // handlers.
 
         // MARK: Badge — refresh-badge + set-last-account message handlers
         onMessage('refresh-badge', () => {
@@ -508,99 +507,6 @@ export default defineBackground({
             storeState(false).catch(() => {})
             return Promise.resolve({ status: true })
         })
-
-        /**
-         * Extract the registrable (eTLD+1) domain from a hostname.
-         * Falls back to the host itself when extraction fails.
-         *
-         * SECURITY: We compare accounts against the registrable domain rather
-         * than a raw substring test, so a service named "it" can no longer
-         * match every `*.it` site, and a service named "google" no longer
-         * matches every Google subdomain indiscriminately.
-         *
-         * @param {string} hostname - e.g. "mail.google.com"
-         * @returns {string} e.g. "google.com"
-         */
-        function getRegistrableDomain(hostname) {
-            const host = (hostname || '').replace(/^www\./, '').toLowerCase()
-            if (!host) return ''
-
-            // Simple suffix list covering the most common multi-part TLDs.
-            // This avoids pulling in the full PSL; for the purpose of OTP
-            // auto-fill matching, conservative is safer than exhaustive.
-            const multiPartTlds = [
-                '.co.uk', '.org.uk', '.gov.uk', '.ac.uk',
-                '.co.jp', '.or.jp', '.ne.jp', '.ac.jp',
-                '.com.au', '.net.au', '.org.au',
-                '.co.nz', '.co.kr', '.co.in', '.org.in', '.net.in',
-                '.com.br', '.com.cn', '.com.tw', '.com.hk', '.com.sg',
-                '.co.za', '.com.mx', '.com.ar',
-            ]
-            for (const suffix of multiPartTlds) {
-                if (host.endsWith(suffix)) {
-                    const before = host.slice(0, -suffix.length)
-                    const parts = before.split('.')
-                    return parts[parts.length - 1] + suffix
-                }
-            }
-            const parts = host.split('.')
-            if (parts.length <= 2) return host
-            return parts.slice(-2).join('.')
-        }
-
-        /**
-         * Score how strongly an account matches the current page domain.
-         *
-         * SECURITY: Matching is based on registrable-domain equality and
-         * explicit label containment — never the unsafe bidirectional
-         * `domain.includes(service) || service.includes(domain)` test that
-         * let short service names ("it", "o", "go") match nearly any host.
-         *
-         * Scoring tiers:
-         *   - exact registrable-domain match:      120
-         *   - service equals a full host label:    100
-         *   - service equals a dot-delimited part:  70
-         *   - account name contains domain label:   30
-         */
-        function calcAutoFillScore(account, domain) {
-            const service = (account.service || '').toLowerCase().trim()
-            const accountName = (account.account || '').toLowerCase().trim()
-            const regDomain = getRegistrableDomain(domain)
-
-            // Reject too-short service names entirely — they match too much.
-            if (service.length < 3) return 0
-
-            let score = 0
-
-            if (service) {
-                if (regDomain && service === regDomain) {
-                    score += 120
-                } else if (domain === service) {
-                    score += 120
-                } else {
-                    // Compare service against full dot-delimited labels of the
-                    // host, e.g. for "login.example.com" the labels are
-                    // ["login", "example", "com", "example.com", "login.example.com"].
-                    const labels = []
-                    const parts = domain.split('.')
-                    for (let i = 0; i < parts.length; i++) {
-                        labels.push(parts.slice(i).join('.'))
-                    }
-                    if (labels.includes(service)) {
-                        score += 100
-                    } else if (regDomain && service.endsWith('.' + regDomain)) {
-                        // service is a deeper subdomain of the page, e.g.
-                        // service "accounts.google.com" on page "google.com".
-                        score += 70
-                    }
-                }
-            }
-            if (accountName && accountName.length >= 3 && domain.split('.').includes(accountName)) {
-                score += 30
-            }
-
-            return score
-        }
 
         //  MARK: Loggers
         // /**
