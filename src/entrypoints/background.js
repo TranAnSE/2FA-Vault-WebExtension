@@ -91,10 +91,23 @@ export default defineBackground({
             )
         }
 
+        // PBKDF2 iteration counts.
+        // - KDF_ITERATIONS_LEGACY: the count used by older extension builds.
+        //   We must keep reading this value for already-encrypted PATs so
+        //   upgrading users are not locked out. OWASP (2023+) recommends
+        //   600,000 for PBKDF2-HMAC-SHA-256, which we now use for all NEW
+        //   encryption (KDF_ITERATIONS_CURRENT). The count actually used to
+        //   derive a key for an existing ciphertext is read back from the
+        //   crypto store (see loadState/unlockExt), defaulting to LEGACY when
+        //   the field is absent.
+        const KDF_ITERATIONS_LEGACY = 100000
+        const KDF_ITERATIONS_CURRENT = 600000
+
         let encryptionParams = {
             default: true,
             salt: null,
-            iv: null
+            iv: null,
+            iterations: KDF_ITERATIONS_LEGACY,
         }
         let state
         resetStateToDefaults()
@@ -178,12 +191,28 @@ export default defineBackground({
             swlog('📢 UNLOCK message received')
             return unlockExt()
         })
-        onMessage('GET_PAT', () => {
+        onMessage('GET_PAT', ({ sender }) => {
             swlog('📢 GET_PAT message received')
+            // The PAT is the long-lived API bearer token. Only the extension's
+            // own trusted UI contexts (popup, options) may retrieve it. A
+            // content script or window context must never receive the raw PAT
+            // — a compromised page that reaches a content-script context
+            // could otherwise exfiltrate the token via this handler.
+            if (!isTrustedPatRequester(sender)) {
+                swlog('🚫 GET_PAT rejected: untrusted sender context', sender?.context)
+                return Promise.resolve({ status: false, pat: null })
+            }
             return getPat()
         })
-        onMessage('GET_PARTIAL_PAT', () => {
+        onMessage('GET_PARTIAL_PAT', ({ sender }) => {
             swlog('📢 GET_PARTIAL_PAT message received')
+            // The partial PAT is not a secret on its own, but apply the same
+            // sender gate for consistency and to avoid leaking token structure
+            // to content-script/window contexts.
+            if (!isTrustedPatRequester(sender)) {
+                swlog('🚫 GET_PARTIAL_PAT rejected: untrusted sender context', sender?.context)
+                return Promise.resolve({ status: false, partialPat: null })
+            }
             return getPartialPat()
         })
         onMessage('RESET_EXT', () => {
@@ -1230,6 +1259,25 @@ export default defineBackground({
             else swlog('⏰ kickAfter is null, exiting startLockTimer without creating a lock timer')
         }
 
+        /**
+         * Whether the message sender may receive the raw PAT.
+         *
+         * webext-bridge tags every message with a `sender.context` value
+         * ('popup' | 'options' | 'content-script' | 'window' | 'devtools' |
+         * 'background'). Only the extension's own UI contexts are trusted with
+         * the PAT; content scripts share their execution context with the page
+         * and must never receive the raw token.
+         *
+         * MARK: isTrustedPatRequester()
+         *
+         * @param {object} sender The webext-bridge sender Endpoint.
+         * @returns {boolean}
+         */
+        function isTrustedPatRequester(sender) {
+            const context = sender?.context
+            return context === 'popup' || context === 'options'
+        }
+
         // /**
         //  * Get the Personal Access Token
         //  *
@@ -1264,6 +1312,10 @@ export default defineBackground({
                         encryptionParams.iv = new Uint8Array(stores[CRYPTO_STORE].iv)
                         encryptionParams.salt = new Uint8Array(stores[CRYPTO_STORE].salt)
                         encryptionParams.default = stores[CRYPTO_STORE].default ?? true
+                        // Preserve the iteration count used to encrypt the
+                        // stored PAT. Older builds wrote nothing here, so fall
+                        // back to the legacy count to stay decryptable.
+                        encryptionParams.iterations = stores[CRYPTO_STORE].iterations ?? KDF_ITERATIONS_LEGACY
                         swlog('Crypto params loaded from store')
                         return new Promise(resolve => resolve())
                     } else {
@@ -1348,6 +1400,9 @@ export default defineBackground({
                     encryptionParams.iv = new Uint8Array(stores[CRYPTO_STORE].iv)
                     encryptionParams.salt = new Uint8Array(stores[CRYPTO_STORE].salt)
                     encryptionParams.default = stores[CRYPTO_STORE].default ?? true
+                    // Preserve the iteration count used to encrypt the stored
+                    // PAT (legacy builds wrote nothing → fall back to 100k).
+                    encryptionParams.iterations = stores[CRYPTO_STORE].iterations ?? KDF_ITERATIONS_LEGACY
                     swlog('Crypto params loaded from store')
                 } else {
                     swlog('❌ Cannot unlock: Failed to retrieve crypto store data')
@@ -1481,12 +1536,14 @@ export default defineBackground({
                     iv: Array(...new Uint8Array(_iv)),
                     salt: Array(...new Uint8Array(_salt)),
                     default: set_default,
+                    iterations: KDF_ITERATIONS_CURRENT,
                     encryptedApiToken: '',
                 }
             }).then(data => {
                 encryptionParams.iv = _iv
                 encryptionParams.salt = _salt
                 encryptionParams.default = set_default
+                encryptionParams.iterations = KDF_ITERATIONS_CURRENT
 
                 swlog('♻️ ✔️ Crypto params set and stored (default = ' + set_default + ')')
                 return data
@@ -1558,15 +1615,21 @@ export default defineBackground({
          *
          * @param key
          * @param salt
+         * @param {number} [iterations] PBKDF2 iteration count. Defaults to the
+         *   count stored on the active encryption params (which is loaded from
+         *   the crypto store for existing ciphertext, or set to
+         *   KDF_ITERATIONS_CURRENT for fresh encryption).
          * @returns {Promise<CryptoKey>}
          */
-        function deriveKey(key, salt) {
+        function deriveKey(key, salt, iterations) {
             swlog('🔀 Deriving encryption key...')
+
+            const iters = iterations ?? encryptionParams.iterations ?? KDF_ITERATIONS_LEGACY
 
             return cryptoApi.subtle.importKey("raw", encoder.encode(key), "PBKDF2", false, ["deriveBits", "deriveKey"]).then(
                 key_material => {
                     return cryptoApi.subtle.deriveKey({
-                        name: "PBKDF2", salt: encoder.encode(salt), iterations: 100000, hash: "SHA-256"
+                        name: "PBKDF2", salt: encoder.encode(salt), iterations: iters, hash: "SHA-256"
                     }, key_material, {
                         name: "AES-GCM", length: 256
                     }, true, ["encrypt", "decrypt"])
@@ -1593,6 +1656,11 @@ export default defineBackground({
             swlogTitle('ENCRYPTING PAT')
 
             try {
+                // Fresh encryption always uses the current (stronger) KDF
+                // count. Decryption of pre-existing ciphertext still uses the
+                // count persisted alongside it (see loadState/unlockExt), so
+                // this only affects new/re-encrypted PATs.
+                encryptionParams.iterations = KDF_ITERATIONS_CURRENT
                 return deriveKey(password, encryptionParams.salt).then(encryptionKey => {
                     swlog('🔃 Regenerating encryption iv...')
 
@@ -1601,10 +1669,16 @@ export default defineBackground({
                     const ivArray = Array(...new Uint8Array(encryptionParams.iv))
                     const saltArray = Array(...new Uint8Array(encryptionParams.salt))
 
+                    // Persist the iteration count actually used to derive the
+                    // key so unlock can reproduce it. generateNewCryptoParams
+                    // already set encryptionParams.iterations = CURRENT; we
+                    // mirror it into the stored blob so the value survives
+                    // reloads (and so this write does not silently drop it).
                     let _cryptoParams = {
                         iv: ivArray,
                         salt: saltArray,
                         default: encryptionParams.default,
+                        iterations: encryptionParams.iterations ?? KDF_ITERATIONS_CURRENT,
                         encryptedApiToken: ''
                     }
 
