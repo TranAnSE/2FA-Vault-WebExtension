@@ -909,12 +909,12 @@ export default defineBackground({
             await loadState()
 
             if (state.locked) {
-                notifyShortcut('Vault is locked')
+                notifyShortcut(browser.i18n.getMessage('notificationVaultLocked'))
                 return
             }
 
             if (!state.lastViewedAccountId) {
-                notifyShortcut('No recent account — open extension first')
+                notifyShortcut(browser.i18n.getMessage('notificationNoRecentAccount'))
                 return
             }
 
@@ -923,23 +923,24 @@ export default defineBackground({
             const account = accounts.find(a => String(a.id) === String(state.lastViewedAccountId))
 
             if (!account) {
-                notifyShortcut('No recent account — open extension first')
+                notifyShortcut(browser.i18n.getMessage('notificationNoRecentAccount'))
                 return
             }
 
             try {
                 const otp = await generateShortcutOtp(account)
                 if (!otp?.password) {
-                    notifyShortcut('Failed to generate OTP')
+                    notifyShortcut(browser.i18n.getMessage('notificationOtpFailed'))
                     return
                 }
 
                 await writeToClipboard(otp.password)
                 const label = account.service || account.account || 'account'
-                notifyShortcut(`OTP copied for ${label}`)
+                // $1 placeholder in messages.json is substituted with the label.
+                notifyShortcut(browser.i18n.getMessage('notificationOtpCopied', label))
             } catch (e) {
                 swlog('❌ copy-otp failed:', e)
-                notifyShortcut('Failed to copy OTP')
+                notifyShortcut(browser.i18n.getMessage('notificationCopyFailed'))
             }
         }
 

@@ -7,5 +7,36 @@
     },
     "shortcutCopyOtpDesc": {
         "message": "Copy the OTP of the focused input field"
+    },
+    "notificationVaultLocked": {
+        "message": "Vault is locked"
+    },
+    "notificationNoRecentAccount": {
+        "message": "No recent account — open extension first"
+    },
+    "notificationOtpFailed": {
+        "message": "Failed to generate OTP"
+    },
+    "notificationOtpCopied": {
+        "message": "OTP copied for $SERVICE$",
+        "placeholders": {
+            "service": {
+                "content": "$1"
+            }
+        }
+    },
+    "notificationCopyFailed": {
+        "message": "Failed to copy OTP"
+    },
+    "autofillBadgeFilled": {
+        "message": "2FA-Vault: OTP filled for $SERVICE$",
+        "placeholders": {
+            "service": {
+                "content": "$1"
+            }
+        }
+    },
+    "autofillBadgeFilledGeneric": {
+        "message": "2FA-Vault: OTP filled for account"
     }
 }

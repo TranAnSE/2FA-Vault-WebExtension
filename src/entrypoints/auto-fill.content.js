@@ -82,7 +82,11 @@ function showFillBadge(service) {
         'box-shadow:0 3px 12px rgba(0,0,0,0.25)',
         'pointer-events:none',
     ].join(';')
-    badge.textContent = `2FA-Vault: OTP filled for ${service || 'account'}`
+    // Use the extension i18n catalog so the autofill badge respects the
+    // browser locale. Falls back to a generic message when no service matched.
+    badge.textContent = service
+        ? browser.i18n.getMessage('autofillBadgeFilled', service)
+        : browser.i18n.getMessage('autofillBadgeFilledGeneric')
     document.body.appendChild(badge)
     setTimeout(() => badge.remove(), 3000)
 }
