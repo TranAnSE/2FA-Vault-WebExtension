@@ -5,6 +5,11 @@ import {
     calcAutoFillScore,
     matchAccountsToHostname,
 } from '../background/autofillMatch.js'
+import {
+    deriveKey as deriveKeyRaw,
+    KDF_ITERATIONS_LEGACY,
+    KDF_ITERATIONS_CURRENT,
+} from '../background/crypto.js'
 
 export default defineBackground({
 
@@ -74,18 +79,9 @@ export default defineBackground({
             )
         }
 
-        // PBKDF2 iteration counts.
-        // - KDF_ITERATIONS_LEGACY: the count used by older extension builds.
-        //   We must keep reading this value for already-encrypted PATs so
-        //   upgrading users are not locked out. OWASP (2023+) recommends
-        //   600,000 for PBKDF2-HMAC-SHA-256, which we now use for all NEW
-        //   encryption (KDF_ITERATIONS_CURRENT). The count actually used to
-        //   derive a key for an existing ciphertext is read back from the
-        //   crypto store (see loadState/unlockExt), defaulting to LEGACY when
-        //   the field is absent.
-        const KDF_ITERATIONS_LEGACY = 100000
-        const KDF_ITERATIONS_CURRENT = 600000
-
+        // PBKDF2 iteration counts (KDF_ITERATIONS_LEGACY / KDF_ITERATIONS_CURRENT)
+        // are imported from src/background/crypto.js, where the stateless
+        // deriveKey primitive also lives and is unit-tested.
         let encryptionParams = {
             default: true,
             salt: null,
@@ -1498,12 +1494,15 @@ export default defineBackground({
          * Derive the encryption key from the user password
          * MARK: deriveKey()
          *
+         * Thin wrapper over the stateless deriveKey primitive in
+         * src/background/crypto.js, injecting the shared cryptoApi/encoder and
+         * resolving the iteration count from the active encryption params
+         * (loaded from the crypto store for existing ciphertext, or set to
+         * KDF_ITERATIONS_CURRENT for fresh encryption).
+         *
          * @param key
          * @param salt
-         * @param {number} [iterations] PBKDF2 iteration count. Defaults to the
-         *   count stored on the active encryption params (which is loaded from
-         *   the crypto store for existing ciphertext, or set to
-         *   KDF_ITERATIONS_CURRENT for fresh encryption).
+         * @param {number} [iterations] Override; defaults to the active params.
          * @returns {Promise<CryptoKey>}
          */
         function deriveKey(key, salt, iterations) {
@@ -1511,15 +1510,13 @@ export default defineBackground({
 
             const iters = iterations ?? encryptionParams.iterations ?? KDF_ITERATIONS_LEGACY
 
-            return cryptoApi.subtle.importKey("raw", encoder.encode(key), "PBKDF2", false, ["deriveBits", "deriveKey"]).then(
-                key_material => {
-                    return cryptoApi.subtle.deriveKey({
-                        name: "PBKDF2", salt: encoder.encode(salt), iterations: iters, hash: "SHA-256"
-                    }, key_material, {
-                        name: "AES-GCM", length: 256
-                    }, true, ["encrypt", "decrypt"])
-                }
-            ).then(data => {
+            return deriveKeyRaw({
+                subtle: cryptoApi.subtle,
+                encoder,
+                password: key,
+                salt,
+                iterations: iters,
+            }).then(data => {
                 swlog('🔀 ✔️ Derived')
 
                 return data
