@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
     deriveKey,
+    encryptAesGcm,
+    decryptAesGcm,
+    toUint8Array,
+    fromUint8Array,
     KDF_ITERATIONS_LEGACY,
     KDF_ITERATIONS_CURRENT,
 } from './crypto.js'
@@ -94,5 +98,76 @@ describe('deriveKey', () => {
         expect(KDF_ITERATIONS_LEGACY).toBe(100000)
         expect(KDF_ITERATIONS_CURRENT).toBe(600000)
         expect(KDF_ITERATIONS_CURRENT).toBeGreaterThan(KDF_ITERATIONS_LEGACY)
+    })
+})
+
+describe('array converters', () => {
+    it('toUint8Array accepts a plain array or a typed array', () => {
+        expect(Array.from(toUint8Array([1, 2, 3]))).toEqual([1, 2, 3])
+        const u = new Uint8Array([4, 5, 6])
+        expect(toUint8Array(u)).toBe(u) // pass-through
+    })
+
+    it('toUint8Array tolerates null/undefined', () => {
+        expect(Array.from(toUint8Array(null))).toEqual([])
+        expect(Array.from(toUint8Array(undefined))).toEqual([])
+    })
+
+    it('fromUint8Array produces a JSON-friendly plain array', () => {
+        const arr = fromUint8Array(new Uint8Array([7, 8, 9]))
+        expect(arr).toEqual([7, 8, 9])
+        expect(JSON.stringify({ x: arr })).toBe('{"x":[7,8,9]}')
+    })
+})
+
+describe('encryptAesGcm / decryptAesGcm', () => {
+    it('round-trips a plaintext string', async () => {
+        const key = await deriveKey({
+            subtle, encoder, password: 'pw', salt: 'salt', iterations: 1000,
+        })
+        const iv = globalThis.crypto.getRandomValues(new Uint8Array(12))
+
+        const ct = await encryptAesGcm({
+            subtle, encoder, key, plaintext: 'pat-SECRET-xyz', iv,
+        })
+        expect(ct).toBeInstanceOf(Uint8Array)
+
+        const plaintext = await decryptAesGcm({
+            subtle, decoder: new TextDecoder(), key, cipherBytes: ct, iv,
+        })
+        expect(plaintext).toBe('pat-SECRET-xyz')
+    })
+
+    it('accepts a plain array (storage shape) as ciphertext for decryption', async () => {
+        // ciphertext is persisted in browser.storage as a plain Array; decrypt
+        // must accept that shape via toUint8Array internally.
+        const key = await deriveKey({
+            subtle, encoder, password: 'pw', salt: 'salt', iterations: 1000,
+        })
+        const iv = globalThis.crypto.getRandomValues(new Uint8Array(12))
+        const ct = await encryptAesGcm({
+            subtle, encoder, key, plaintext: 'pat-PLAIN', iv,
+        })
+        const plainArray = fromUint8Array(ct) // simulate storage round-trip
+
+        const plaintext = await decryptAesGcm({
+            subtle, decoder: new TextDecoder(), key, cipherBytes: plainArray, iv,
+        })
+        expect(plaintext).toBe('pat-PLAIN')
+    })
+
+    it('fails to decrypt with a wrong IV (auth-tag mismatch)', async () => {
+        const key = await deriveKey({
+            subtle, encoder, password: 'pw', salt: 'salt', iterations: 1000,
+        })
+        const iv = globalThis.crypto.getRandomValues(new Uint8Array(12))
+        const ct = await encryptAesGcm({
+            subtle, encoder, key, plaintext: 'pat-X', iv,
+        })
+        const wrongIv = globalThis.crypto.getRandomValues(new Uint8Array(12))
+
+        await expect(
+            decryptAesGcm({ subtle, decoder: new TextDecoder(), key, cipherBytes: ct, iv: wrongIv }),
+        ).rejects.toThrow()
     })
 })

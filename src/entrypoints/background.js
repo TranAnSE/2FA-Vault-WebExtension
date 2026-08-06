@@ -7,6 +7,9 @@ import {
 } from '../background/autofillMatch.js'
 import {
     deriveKey as deriveKeyRaw,
+    encryptAesGcm,
+    decryptAesGcm,
+    fromUint8Array,
     KDF_ITERATIONS_LEGACY,
     KDF_ITERATIONS_CURRENT,
 } from '../background/crypto.js'
@@ -1461,22 +1464,13 @@ export default defineBackground({
             swlog('🔃 Decrypting PAT...')
 
             if (encryptionKey && cipherText) {
-                try {
-                    return cryptoApi.subtle.decrypt({
-                        name: "AES-GCM", iv: encryptionParams.iv
-                    }, encryptionKey, new Uint8Array(cipherText)).then(decodedBuffer => {
-                        try {
-                            const decoder = new TextDecoder()
-                            const decoded = decoder.decode(new Uint8Array(decodedBuffer))
-
-                            return decoded
-                        } catch (e) {
-                            return Promise.reject('Error during decoder.decode(): ' + e.message)
-                        }
-                    }, (ex) => Promise.reject('Error during subtle.decrypt(): ' + ex))
-                } catch (e) {
-                    return Promise.reject('Error during decrypt: ' + e.message)
-                }
+                return decryptAesGcm({
+                    subtle: cryptoApi.subtle,
+                    decoder: new TextDecoder(),
+                    key: encryptionKey,
+                    cipherBytes: cipherText,
+                    iv: encryptionParams.iv,
+                }).catch((ex) => Promise.reject('Error during decrypt: ' + (ex?.message ?? ex)))
             }
 
             return Promise.reject('Cannot decrypt: missing password or cipherText')
@@ -1540,8 +1534,8 @@ export default defineBackground({
 
                     encryptionParams.iv = cryptoApi.getRandomValues(new Uint8Array(12))
                     encryptionParams.default = encryptionKey === null
-                    const ivArray = Array(...new Uint8Array(encryptionParams.iv))
-                    const saltArray = Array(...new Uint8Array(encryptionParams.salt))
+                    const ivArray = fromUint8Array(encryptionParams.iv)
+                    const saltArray = fromUint8Array(encryptionParams.salt)
 
                     // Persist the iteration count actually used to derive the
                     // key so unlock can reproduce it. generateNewCryptoParams
@@ -1562,12 +1556,16 @@ export default defineBackground({
                         swlog('🔃 ✔️ iv regenerated')
                         swlog('🔃 Encrypting PAT...')
 
-                        return cryptoApi.subtle.encrypt({
-                            name: "AES-GCM", iv: encryptionParams.iv
-                        }, encryptionKey, encoder.encode(apiToken).buffer).then(ciphertext => {
+                        return encryptAesGcm({
+                            subtle: cryptoApi.subtle,
+                            encoder,
+                            key: encryptionKey,
+                            plaintext: apiToken,
+                            iv: encryptionParams.iv,
+                        }).then(ciphertext => {
                             swlog('🔃 ✔️ PAT encrypted')
 
-                            _cryptoParams.encryptedApiToken = Array(...new Uint8Array(ciphertext))
+                            _cryptoParams.encryptedApiToken = fromUint8Array(ciphertext)
 
                             return browser.storage.local.set({
                                 [CRYPTO_STORE]: _cryptoParams
