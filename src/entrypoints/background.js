@@ -10,6 +10,7 @@ import {
     KDF_ITERATIONS_LEGACY,
     KDF_ITERATIONS_CURRENT,
 } from '../background/crypto.js'
+import { remainingSeconds, resolveBadgeAppearance } from '../background/badge.js'
 
 export default defineBackground({
 
@@ -591,19 +592,11 @@ export default defineBackground({
         }
 
         // MARK: Badge helpers — TOTP countdown badge on the toolbar icon
-        // Counts accounts whose TOTP will rotate within 10s. Color is derived from the
-        // most-urgent account: red (#ef4444) <=5s, amber (#f59e0b) <=10s, green (#22c55e) otherwise.
-
-        /**
-         * Remaining seconds before the account's TOTP rotates
-         *
-         * @param {object} account
-         * @returns {number}
-         */
-        function remainingSeconds(account) {
-            const period = Number(account?.period) > 0 ? Number(account.period) : 30
-            return period - (Math.floor(Date.now() / 1000) % period)
-        }
+        // Counts accounts whose TOTP will rotate within 10s. The pure pieces
+        // (remainingSeconds, resolveBadgeAppearance) live in
+        // src/background/badge.js so they can be unit-tested; color is derived
+        // from the most-urgent account: red (#ef4444) <=5s, amber (#f59e0b)
+        // <=10s, green (#22c55e) otherwise.
 
         /**
          * Resolve the toolbar action API (browser.action on MV3, browser.browserAction on MV2 Firefox)
@@ -623,8 +616,7 @@ export default defineBackground({
          * @param {number} urgency
          */
         function setBadge(count, urgency) {
-            const text = count > 0 ? String(count) : ''
-            const color = urgency <= 5 ? '#ef4444' : urgency <= 10 ? '#f59e0b' : '#22c55e'
+            const { text, color } = resolveBadgeAppearance(count, urgency)
             try {
                 getActionApi().setBadgeText({ text })
                 getActionApi().setBadgeBackgroundColor({ color })
