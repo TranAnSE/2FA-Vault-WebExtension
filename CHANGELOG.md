@@ -1,5 +1,23 @@
 # Change log
 
+## [1.3.0] - 2026-08-08
+
+### Security
+
+- `GET_PAT` / `GET_PARTIAL_PAT` webext-bridge handlers now reject any sender whose context is not `popup`/`options`, closing a path by which a compromised page reaching a content-script context could exfiltrate the raw PAT.
+- PAT-at-rest key derivation raised from PBKDF2/100k to PBKDF2/600k iterations (OWASP 2023+). Backward-compatible: existing ciphertext stays decryptable via the persisted iteration count; re-encrypting upgrades to 600k. Argon2id was ruled out for the MV3 service worker due to WASM memory constraints (see SECURITY.md).
+- Localized the service-worker copy-OTP notifications and the auto-fill badge via `browser.i18n.getMessage` (7 new message keys).
+
+### Changed
+
+- Refactored four security-sensitive modules out of the 1661-line `background.js` into testable factories under `src/background/`: `lockout.js`, `autofillMatch.js`, `badge.js`, `crypto.js`. The stateful wrappers stay inline.
+- Added Vitest + jsdom (no test runner existed before); 42 unit tests now cover the extracted modules.
+
+### Fixed
+
+- `package.json` version now matches the changelog (was 1.2.0; the 1.2.1 features shipped without the version bump).
+- The previous "stale `@2fauth/ui` dist (missing `StackLayout`)" known issue is resolved.
+
 ## [1.2.1] - 2026-06-14
 
 ### Added
