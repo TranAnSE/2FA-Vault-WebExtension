@@ -7,5 +7,22 @@
     },
     "shortcutCopyOtpDesc": {
         "message": "फ़ोकस किए गए इनपुट फ़ील्ड का OTP कॉपी करें"
+    },
+    "qrCapturedNotificationTitle": {
+        "message": "QR कोड कैप्चर हुआ"
+    },
+    "qrCapturedNotificationMessage": {
+        "message": "खाता देखने के लिए 2FA-Vault आइकन पर क्लिक करें"
+    },
+    "autofillBadgeFilledFor": {
+        "message": "2FA-Vault: $SERVICE$ ($ACCOUNT$) के लिए OTP भरा गया",
+        "placeholders": {
+            "service": {
+                "content": "$1"
+            },
+            "account": {
+                "content": "$2"
+            }
+        }
     }
 }

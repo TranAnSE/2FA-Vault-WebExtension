@@ -1,5 +1,5 @@
 <script setup>
-    import { sendMessage } from 'webext-bridge/popup'
+    import { sendMessage, onMessage } from 'webext-bridge/popup'
     import { useNotify } from '@2fauth/ui'
     import { useTwofaccounts } from '@popup/stores/twofaccounts'
     import { useSettingStore } from '@/stores/settingStore'
@@ -16,10 +16,10 @@
     async function scanForQrCodeInTab() {
         try {
             const result = await sendMessage('INJECT_CONTENT_SCRIPT', {
-                addButtonCaption: t('label.add_to_2fauth'),
+                addButtonCaption: t('label.add_to_2FA-Vault'),
                 cancelButtonCaption: t('label.cancel')
             }, 'background')
-            
+
             if (!result.success) {
                 notify.alert({ text: t(result.error) })
             }
@@ -27,6 +27,22 @@
             notify.alert({ text: t('error.failed_to_inject_content_script') })
         }
     }
+
+    onMounted(() => {
+        // D13: QR scans can be started from this view too (the content script
+        // always reports to the 'popup' context) — surface the "no QR found"
+        // alert and close the popup on success, exactly like the Accounts view.
+        onMessage('QR_SCAN_COMPLETE', ({ data }) => {
+            if (! data.found) {
+                notify.alert({ text: t('error.no_qrcode_found') })
+            }
+            else {
+                window.close()
+            }
+
+            return { success: true }
+        })
+    })
 
 </script>
 

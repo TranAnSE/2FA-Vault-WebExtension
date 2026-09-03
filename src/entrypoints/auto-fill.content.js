@@ -1,4 +1,5 @@
 import { sendMessage } from 'webext-bridge/content-script'
+import { qualifiesOtpField } from '../background/autofillMatch.js'
 
 const OTP_FIELD_SELECTORS = [
     'input[autocomplete="one-time-code"]',
@@ -35,13 +36,29 @@ function detectOtpFields() {
     const fields = []
     for (const selector of OTP_FIELD_SELECTORS) {
         document.querySelectorAll(selector).forEach(el => {
-            if (!seen.has(el) && isVisible(el)) {
-                seen.add(el)
-                fields.push({ element: el, confidence: scoreField(el, selector) })
-            }
+            if (seen.has(el) || !isVisible(el)) return
+            seen.add(el)
+            // D8: a candidate only qualifies with autocomplete="one-time-code"
+            // or form context + OTP heuristics (numeric inputmode, maxlength
+            // 6-8). Free-standing text inputs are never auto-filled.
+            if (!qualifiesOtpField(fieldSnapshot(el))) return
+            fields.push({ element: el, confidence: scoreField(el, selector) })
         })
     }
     return fields.sort((a, b) => b.confidence - a.confidence)
+}
+
+/**
+ * Attribute snapshot consumed by the shared qualifiesOtpField() predicate.
+ */
+function fieldSnapshot(el) {
+    return {
+        autocomplete: el.getAttribute('autocomplete'),
+        inputmode: el.getAttribute('inputmode'),
+        maxlength: el.getAttribute('maxlength'),
+        type: el.getAttribute('type'),
+        inForm: el.closest('form') !== null,
+    }
 }
 
 function isVisible(el) {
@@ -66,7 +83,7 @@ function fillOtpIntoField(element, otp) {
     setTimeout(() => { if (element.value === otp) element.value = '' }, 30000)
 }
 
-function showFillBadge(service) {
+function showFillBadge(service, account) {
     const badge = document.createElement('div')
     badge.style.cssText = [
         'position:fixed',
@@ -84,15 +101,26 @@ function showFillBadge(service) {
     ].join(';')
     // Use the extension i18n catalog so the autofill badge respects the
     // browser locale. Falls back to a generic message when no service matched.
-    badge.textContent = service
-        ? browser.i18n.getMessage('autofillBadgeFilled', service)
-        : browser.i18n.getMessage('autofillBadgeFilledGeneric')
+    if (service && account) {
+        // D9: several accounts matched this hostname — name the chosen one.
+        badge.textContent = browser.i18n.getMessage('autofillBadgeFilledFor', [service, account])
+            || browser.i18n.getMessage('autofillBadgeFilled', service)
+    }
+    else if (service) {
+        badge.textContent = browser.i18n.getMessage('autofillBadgeFilled', service)
+    }
+    else {
+        badge.textContent = browser.i18n.getMessage('autofillBadgeFilledGeneric')
+    }
     document.body.appendChild(badge)
     setTimeout(() => badge.remove(), 3000)
 }
 
 let lastFillTime = 0
 let fillInProgress = false
+// D8: fields we already filled. Mutation-triggered re-fills only target
+// these — untouched page fields are never auto-filled behind the user's back.
+const filledFields = new WeakSet()
 
 async function detectAndFill() {
     if (fillInProgress) return
@@ -102,6 +130,13 @@ async function detectAndFill() {
     const fields = detectOtpFields()
     if (fields.length === 0) return
 
+    // D8: once a fill happened on this page, only re-fill the fields we
+    // filled ourselves (e.g. the site cleared them); never pick new ones.
+    const candidates = filledFields.size > 0
+        ? fields.filter(f => filledFields.has(f.element))
+        : fields
+    if (candidates.length === 0) return
+
     fillInProgress = true
     try {
         const response = await sendMessage('REQUEST_AUTO_FILL', {
@@ -109,8 +144,9 @@ async function detectAndFill() {
         }, 'background')
 
         if (response?.otp) {
-            fillOtpIntoField(fields[0].element, response.otp)
-            showFillBadge(response.service)
+            fillOtpIntoField(candidates[0].element, response.otp)
+            filledFields.add(candidates[0].element)
+            showFillBadge(response.service, response.ambiguous ? response.account : null)
             lastFillTime = Date.now()
         }
     } catch {

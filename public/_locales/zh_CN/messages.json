@@ -7,5 +7,22 @@
     },
     "shortcutCopyOtpDesc": {
         "message": "复制焦点输入字段的 OTP"
+    },
+    "qrCapturedNotificationTitle": {
+        "message": "已捕获二维码"
+    },
+    "qrCapturedNotificationMessage": {
+        "message": "点击 2FA-Vault 图标查看账户"
+    },
+    "autofillBadgeFilledFor": {
+        "message": "2FA-Vault：已为 $SERVICE$（$ACCOUNT$）填入 OTP",
+        "placeholders": {
+            "service": {
+                "content": "$1"
+            },
+            "account": {
+                "content": "$2"
+            }
+        }
     }
 }

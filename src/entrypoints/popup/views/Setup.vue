@@ -3,7 +3,7 @@
     import { useNotify } from '@2fauth/ui'
     import { useErrorHandler } from '@2fauth/stores'
     import { usePreferenceStore } from '@/stores/preferenceStore'
-    import { isFilled, isHttpUrl } from '@popup/composables/validators'
+    import { isFilled, isHttpUrl, isInsecureHttpUrl } from '@popup/composables/validators'
     import userService from '@popup/services/userService'
     import { FormButtons } from '@2fauth/formcontrols'
     import { LucideCheck } from 'lucide-vue-next'
@@ -160,6 +160,13 @@
 
         if (! isFilled(_hostUrl.value) || ! isHttpUrl(_hostUrl.value)) {
             errors.value.hostUrl = t('error.field_is_required_and_valid_url')
+            return false
+        }
+
+        // D17/RT8: plain http is only allowed for local/private hosts — a
+        // public host over http would transmit the PAT in clear text.
+        if (isInsecureHttpUrl(_hostUrl.value)) {
+            errors.value.hostUrl = t('error.insecure_http_url')
             return false
         }
 

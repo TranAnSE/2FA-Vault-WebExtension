@@ -7,5 +7,22 @@
     },
     "shortcutCopyOtpDesc": {
         "message": "Kopier OTP for det fokuserede inputfelt"
+    },
+    "qrCapturedNotificationTitle": {
+        "message": "QR-kode fanget"
+    },
+    "qrCapturedNotificationMessage": {
+        "message": "Klik på 2FA-Vault-ikonet for at se kontoen"
+    },
+    "autofillBadgeFilledFor": {
+        "message": "2FA-Vault: OTP udfyldt for $SERVICE$ ($ACCOUNT$)",
+        "placeholders": {
+            "service": {
+                "content": "$1"
+            },
+            "account": {
+                "content": "$2"
+            }
+        }
     }
 }

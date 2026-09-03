@@ -3,6 +3,7 @@ import {
     getRegistrableDomain,
     calcAutoFillScore,
     matchAccountsToHostname,
+    qualifiesOtpField,
 } from './autofillMatch.js'
 
 describe('getRegistrableDomain', () => {
@@ -120,5 +121,36 @@ describe('matchAccountsToHostname', () => {
         ]
         const matches = matchAccountsToHostname(multi, 'example.com')
         expect(matches.map(m => m.account.id)).toEqual([10, 11])
+    })
+})
+
+describe('qualifiesOtpField (D8 autofill hardening)', () => {
+    it('accepts any field declaring autocomplete="one-time-code"', () => {
+        expect(qualifiesOtpField({ autocomplete: 'one-time-code', inForm: false })).toBe(true)
+        expect(qualifiesOtpField({ autocomplete: 'ONE-TIME-CODE', inForm: true })).toBe(true)
+    })
+
+    it('accepts form-scoped fields with OTP-ish maxlength or numeric inputmode', () => {
+        expect(qualifiesOtpField({ maxlength: '6', inForm: true })).toBe(true)
+        expect(qualifiesOtpField({ maxlength: '8', inForm: true })).toBe(true)
+        expect(qualifiesOtpField({ inputmode: 'numeric', inForm: true })).toBe(true)
+        expect(qualifiesOtpField({ type: 'number', inForm: true })).toBe(true)
+        expect(qualifiesOtpField({ type: 'tel', inForm: true })).toBe(true)
+    })
+
+    it('rejects free-standing fields outside a form', () => {
+        expect(qualifiesOtpField({ maxlength: '6', inForm: false })).toBe(false)
+        expect(qualifiesOtpField({ inputmode: 'numeric', inForm: false })).toBe(false)
+    })
+
+    it('rejects form-scoped fields without OTP heuristics', () => {
+        expect(qualifiesOtpField({ maxlength: '40', inForm: true })).toBe(false)
+        expect(qualifiesOtpField({ inputmode: 'text', inForm: true })).toBe(false)
+        expect(qualifiesOtpField({ inForm: true })).toBe(false)
+    })
+
+    it('rejects missing input', () => {
+        expect(qualifiesOtpField(null)).toBe(false)
+        expect(qualifiesOtpField(undefined)).toBe(false)
     })
 })

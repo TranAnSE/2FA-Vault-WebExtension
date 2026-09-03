@@ -7,5 +7,22 @@
     },
     "shortcutCopyOtpDesc": {
         "message": "Kopieer de OTP van het gefocuste invoerveld"
+    },
+    "qrCapturedNotificationTitle": {
+        "message": "QR-code vastgelegd"
+    },
+    "qrCapturedNotificationMessage": {
+        "message": "Klik op het 2FA-Vault-pictogram om het account te bekijken"
+    },
+    "autofillBadgeFilledFor": {
+        "message": "2FA-Vault: OTP ingevuld voor $SERVICE$ ($ACCOUNT$)",
+        "placeholders": {
+            "service": {
+                "content": "$1"
+            },
+            "account": {
+                "content": "$2"
+            }
+        }
     }
 }

@@ -57,17 +57,23 @@ export default defineContentScript({
             }
         }
 
-        // Re-analyze on significant DOM changes (for SPAs)
+        // Re-analyze on significant DOM changes (for SPAs). The callback is
+        // debounced (~150ms, matching the auto-fill pattern) so mutation
+        // bursts do not run analyze() per mutation record.
         let lastState = result.hasLoginForm || result.has2FAForm
+        let analyzeTimer = null
         const observer = new MutationObserver(() => {
-            const current = analyze()
-            const newState = current.hasLoginForm || current.has2FAForm
-            if (newState !== lastState) {
-                lastState = newState
-                if (newState) {
-                    sendMessage('PAGE_ANALYZED', current, 'background').catch(() => {})
+            if (analyzeTimer) clearTimeout(analyzeTimer)
+            analyzeTimer = setTimeout(() => {
+                const current = analyze()
+                const newState = current.hasLoginForm || current.has2FAForm
+                if (newState !== lastState) {
+                    lastState = newState
+                    if (newState) {
+                        sendMessage('PAGE_ANALYZED', current, 'background').catch(() => {})
+                    }
                 }
-            }
+            }, 150)
         })
         observer.observe(document.body, { childList: true, subtree: true })
     },

@@ -74,8 +74,10 @@ export const useTwofaccounts = defineStore('twofaccounts', () => {
     }
 
     async function clearVaultSession() {
-        const sessionStorage = browser.storage.session ?? browser.storage.local
-        await sessionStorage.remove('vaultKey')
+        // D6: session-only — the E2EE vault key is never written to
+        // storage.local (on disk). storage.session exists on Chrome MV3
+        // and Firefox >= 115.
+        await browser.storage.session?.remove?.('vaultKey')
         $reset()
     }
 
@@ -101,8 +103,7 @@ export const useTwofaccounts = defineStore('twofaccounts', () => {
     }
 
     async function fetchForCurrentVaultState(force = false) {
-        const sessionStorage = browser.storage.session ?? browser.storage.local
-        const { vaultKey } = await sessionStorage.get('vaultKey')
+        const { vaultKey } = await browser.storage.session?.get?.('vaultKey') ?? {}
 
         if (vaultKey) {
             encryptedVaultUnlocked.value = true
@@ -128,8 +129,7 @@ export const useTwofaccounts = defineStore('twofaccounts', () => {
             return { status: false, reason: 'error.invalid_encryption_password' }
         }
 
-        const sessionStorage = browser.storage.session ?? browser.storage.local
-        await sessionStorage.set({ vaultKey: await exportKey(key) })
+        await browser.storage.session?.set?.({ vaultKey: await exportKey(key) })
         await fetchEncrypted(key)
         encryptedVaultUnlocked.value = true
 

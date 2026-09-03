@@ -4,7 +4,6 @@
     import { useTwofaccounts } from '@popup/stores/twofaccounts'
     import { FormButtons } from '@2fauth/formcontrols'
     import { isFilled } from '@popup/composables/validators'
-    import { biometricService } from '@popup/services/biometricService'
 
     const { t } = useI18n()
     const notify = useNotify()
@@ -12,20 +11,9 @@
     const twofaccounts = useTwofaccounts()
     const router = useRouter()
     const isBusy = ref(false)
-    const isBiometricBusy = ref(false)
-    const biometricAvailable = ref(false)
-    const biometricEnrolled = ref(false)
     const pwd = ref(null)
     const errors = ref({
         pwd: '',
-    })
-
-    onMounted(async () => {
-        const supported = await biometricService.isSupported()
-        biometricAvailable.value = supported
-        if (supported) {
-            biometricEnrolled.value = await biometricService.isEnrolled()
-        }
     })
 
     async function unlock() {
@@ -64,26 +52,6 @@
         }
     }
 
-    async function unlockWithBiometric() {
-        isBiometricBusy.value = true
-        notify.clear()
-        try {
-            const password = await biometricService.retrievePassword()
-            pwd.value = password
-            await unlock()
-        } catch (e) {
-            // Surface a clear, actionable message when the browser lacks the
-            // WebAuthn PRF extension required by the new biometric model.
-            const message = (e && /PRF/i.test(e.message))
-                ? t('error.biometric_prf_unsupported')
-                : t('error.biometric_unlock_failed') + ': ' + (e?.message ?? '')
-            notify.alert({ text: message })
-        } finally {
-            isBiometricBusy.value = false
-            pwd.value = null
-        }
-    }
-
     function validatePassword() {
         errors.value.pwd = ''
 
@@ -112,19 +80,6 @@
                         submitId="btnUnlock"
                         :isBusy="isBusy" />
                 </form>
-
-                <div v-if="biometricAvailable && biometricEnrolled" class="mt-4">
-                    <hr />
-                    <VueButton
-                        id="btnBiometricUnlock"
-                        :isLoading="isBiometricBusy"
-                        class="button is-fullwidth"
-                        nativeType="button"
-                        @click="unlockWithBiometric"
-                    >
-                        {{ $t('label.unlock_with_biometric') }}
-                    </VueButton>
-                </div>
             </div>
         </template>
         <template #footer>

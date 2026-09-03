@@ -226,15 +226,20 @@ export default defineContentScript({
             const element = qrData.originalElement
             
             // Store original styles
-            originalStyles.set(element, {
-                outline: element.style.outline || '',
-                outlineOffset: element.style.outlineOffset || '',
-                boxShadow: element.style.boxShadow || '',
-                position: element.style.position || '',
-                zIndex: element.style.zIndex || '',
-                transition: element.style.transition || ''
-            })
-            
+            // D18: capture only once per element — a re-scan of an already
+            // highlighted element must not record the highlight itself as
+            // the "original" style (which would make it permanent).
+            if (!originalStyles.has(element)) {
+                originalStyles.set(element, {
+                    outline: element.style.outline || '',
+                    outlineOffset: element.style.outlineOffset || '',
+                    boxShadow: element.style.boxShadow || '',
+                    position: element.style.position || '',
+                    zIndex: element.style.zIndex || '',
+                    transition: element.style.transition || ''
+                })
+            }
+
             // Apply highlight styles
             element.style.outline = '4px solid #00d1b2'
             element.style.outlineOffset = '2px'

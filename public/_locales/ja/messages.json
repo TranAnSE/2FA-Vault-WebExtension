@@ -7,5 +7,22 @@
     },
     "shortcutCopyOtpDesc": {
         "message": "フォーカスされた入力フィールドのOTPをコピー"
+    },
+    "qrCapturedNotificationTitle": {
+        "message": "QRコードを取得しました"
+    },
+    "qrCapturedNotificationMessage": {
+        "message": "アカウントを表示するには 2FA-Vault アイコンをクリックしてください"
+    },
+    "autofillBadgeFilledFor": {
+        "message": "2FA-Vault: $SERVICE$ ($ACCOUNT$) の OTP を入力しました",
+        "placeholders": {
+            "service": {
+                "content": "$1"
+            },
+            "account": {
+                "content": "$2"
+            }
+        }
     }
 }

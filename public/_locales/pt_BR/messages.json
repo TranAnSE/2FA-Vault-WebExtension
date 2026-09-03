@@ -7,5 +7,22 @@
     },
     "shortcutCopyOtpDesc": {
         "message": "Copiar o OTP do campo de entrada focado"
+    },
+    "qrCapturedNotificationTitle": {
+        "message": "Código QR capturado"
+    },
+    "qrCapturedNotificationMessage": {
+        "message": "Clique no ícone do 2FA-Vault para ver a conta"
+    },
+    "autofillBadgeFilledFor": {
+        "message": "2FA-Vault: OTP preenchido para $SERVICE$ ($ACCOUNT$)",
+        "placeholders": {
+            "service": {
+                "content": "$1"
+            },
+            "account": {
+                "content": "$2"
+            }
+        }
     }
 }

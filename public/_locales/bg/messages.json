@@ -7,5 +7,22 @@
     },
     "shortcutCopyOtpDesc": {
         "message": "Копирай OTP на фокусираното поле за въвеждане"
+    },
+    "qrCapturedNotificationTitle": {
+        "message": "QR кодът е уловен"
+    },
+    "qrCapturedNotificationMessage": {
+        "message": "Натиснете иконата на 2FA-Vault, за да видите акаунта"
+    },
+    "autofillBadgeFilledFor": {
+        "message": "2FA-Vault: OTP е попълнен за $SERVICE$ ($ACCOUNT$)",
+        "placeholders": {
+            "service": {
+                "content": "$1"
+            },
+            "account": {
+                "content": "$2"
+            }
+        }
     }
 }

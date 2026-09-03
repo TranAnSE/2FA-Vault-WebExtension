@@ -7,5 +7,22 @@
     },
     "shortcutCopyOtpDesc": {
         "message": "Odaklanmış giriş alanının OTP’sini kopyala"
+    },
+    "qrCapturedNotificationTitle": {
+        "message": "QR kodu yakalandı"
+    },
+    "qrCapturedNotificationMessage": {
+        "message": "Hesabı görmek için 2FA-Vault simgesine tıklayın"
+    },
+    "autofillBadgeFilledFor": {
+        "message": "2FA-Vault: $SERVICE$ ($ACCOUNT$) için OTP dolduruldu",
+        "placeholders": {
+            "service": {
+                "content": "$1"
+            },
+            "account": {
+                "content": "$2"
+            }
+        }
     }
 }

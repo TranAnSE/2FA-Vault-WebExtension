@@ -31,3 +31,6 @@ resources
 *.sw?
 
 *.key
+.env
+.env.*
+!.env.example

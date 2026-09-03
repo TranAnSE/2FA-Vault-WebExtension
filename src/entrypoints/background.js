@@ -5,6 +5,8 @@ import {
     calcAutoFillScore,
     matchAccountsToHostname,
 } from '../background/autofillMatch.js'
+import { createRuntimeSecrets, resolveRuntimePat } from '../background/sessionSecrets.js'
+import { isExtensionPageSender, isContentScriptSender } from '../background/senderGate.js'
 import {
     deriveKey as deriveKeyRaw,
     encryptAesGcm,
@@ -45,6 +47,12 @@ export default defineBackground({
         // call sites (loadLockout/getLockoutRemainingMs/recordFailedAttempt/
         // resetLockout) unchanged.
         const lockoutController = createLockout({ storage: browser.storage.local })
+
+        // MARK: Runtime secrets (D1/D6) — the decrypted PAT lives in
+        // service-worker memory, mirrored to browser.storage.session
+        // (memory-backed, survives SW suspension, cleared on browser
+        // restart) where available. It is NEVER written to storage.local.
+        const runtimeSecrets = createRuntimeSecrets({ sessionStorage: browser.storage.session ?? null })
 
         function loadLockout() {
             return lockoutController.load()
@@ -99,9 +107,82 @@ export default defineBackground({
         // let enable_debug = true
         let password = null
         
-        // QR code capture state
+        // QR code capture state. The buffer is kept in SW memory and mirrored
+        // to browser.storage.session (D7) so a service-worker suspension
+        // between capture and popup read does not lose the image. Never
+        // persisted to storage.local.
         let qrImageBuffer = null
         let qrImageMimeType = null
+
+        const QR_SESSION_KEY = 'qrImage'
+
+        async function persistQrImageToSession() {
+            if (!qrImageBuffer || !qrImageMimeType) return
+            try {
+                await browser.storage.session?.set?.({
+                    [QR_SESSION_KEY]: { buffer: Array.from(qrImageBuffer), mimeType: qrImageMimeType },
+                })
+            } catch {
+                // Session storage unavailable — memory-only (acceptable degradation)
+            }
+        }
+
+        async function clearQrImage() {
+            qrImageBuffer = null
+            qrImageMimeType = null
+            try {
+                await browser.storage.session?.remove?.(QR_SESSION_KEY)
+            } catch {
+                // ignore
+            }
+        }
+
+        /**
+         * Resolve the captured QR image, recovering it from session storage
+         * when the SW was suspended. Returns true when a buffer is available.
+         * D7: clear the badge when the buffer is lost so the user is not
+         * left with a stale "1" indicator pointing at nothing.
+         */
+        async function loadQrImage() {
+            if (qrImageBuffer && qrImageMimeType) return true
+
+            try {
+                const stored = await browser.storage.session?.get?.(QR_SESSION_KEY)
+                const qr = stored?.[QR_SESSION_KEY]
+                if (qr?.buffer && qr?.mimeType) {
+                    qrImageBuffer = new Uint8Array(qr.buffer)
+                    qrImageMimeType = qr.mimeType
+                    return true
+                }
+            } catch {
+                // ignore
+            }
+
+            if (!qrImageBuffer) {
+                clearBadge()
+            }
+            return false
+        }
+
+        /**
+         * D7: MV3 openPopup() requires a user gesture and fails when the QR
+         * capture was triggered from a content-script click. Fall back to the
+         * MV2-style notification + badge so the user knows to open the popup.
+         */
+        function notifyQrCaptured() {
+            try {
+                browser.notifications.create({
+                    type: 'basic',
+                    iconUrl: 'icon-64.png',
+                    title: browser.i18n.getMessage('qrCapturedNotificationTitle') || 'QR Code Captured',
+                    message: browser.i18n.getMessage('qrCapturedNotificationMessage') || 'Click the extension icon to view the account',
+                })
+                getActionApi().setBadgeText({ text: '1' })
+                getActionApi().setBadgeBackgroundColor({ color: '#00d1b2' })
+            } catch (e) {
+                // Notifications/badge API not available
+            }
+        }
 
         //  MARK: Listeners
         // Lancé quand une fenêtre est fermée.
@@ -146,16 +227,29 @@ export default defineBackground({
             swlog('📢 SET_AUTOLOCK_DELAY message received')
             return setAutolockDelay(data.kickAfter)
         })
-        onMessage('ENCRYPT_PAT', ({ data }) => {
+        onMessage('ENCRYPT_PAT', ({ data, sender }) => {
             swlog('📢 ENCRYPT_PAT message received')
+            // D5: only the extension's own pages may store a PAT.
+            if (!isExtensionPageSender(sender)) {
+                swlog('🚫 ENCRYPT_PAT rejected: untrusted sender context', sender?.context)
+                return Promise.resolve({ status: false })
+            }
             return encryptPat(data.apiToken)
         })
-        onMessage('SET_PASSWORD', ({ data }) => {
+        onMessage('SET_PASSWORD', ({ data, sender }) => {
             swlog('📢 SET_PASSWORD message received')
+            if (!isExtensionPageSender(sender)) {
+                swlog('🚫 SET_PASSWORD rejected: untrusted sender context', sender?.context)
+                return Promise.resolve({ status: false })
+            }
             return setPassword(data.password)
         })
-        onMessage('CHANGE_PASSWORD', ({ data }) => {
+        onMessage('CHANGE_PASSWORD', ({ data, sender }) => {
             swlog('📢 CHANGE_PASSWORD message received')
+            if (!isExtensionPageSender(sender)) {
+                swlog('🚫 CHANGE_PASSWORD rejected: untrusted sender context', sender?.context)
+                return Promise.resolve({ status: false })
+            }
             return changePassword(data.password)
         })
         onMessage('CHECK_PASSWORD', ({ data }) => {
@@ -170,8 +264,13 @@ export default defineBackground({
             swlog('📢 LOCK_EXTENSION message received')
             return lockNow('popup request')
         })
-        onMessage('UNLOCK', () => {
+        onMessage('UNLOCK', ({ sender }) => {
             swlog('📢 UNLOCK message received')
+            // D5: unlocking from anything but the extension's own UI is refused.
+            if (!isExtensionPageSender(sender)) {
+                swlog('🚫 UNLOCK rejected: untrusted sender context', sender?.context)
+                return Promise.resolve({ status: false })
+            }
             return unlockExt()
         })
         onMessage('GET_PAT', ({ sender }) => {
@@ -198,8 +297,12 @@ export default defineBackground({
             }
             return getPartialPat()
         })
-        onMessage('RESET_EXT', () => {
+        onMessage('RESET_EXT', ({ sender }) => {
             swlog('📢 RESET_EXT message received')
+            if (!isExtensionPageSender(sender)) {
+                swlog('🚫 RESET_EXT rejected: untrusted sender context', sender?.context)
+                return Promise.resolve({ status: false })
+            }
             return resetExt()
         })
         onMessage('GET_EXT_VERSION', () => {
@@ -279,27 +382,27 @@ export default defineBackground({
                 // Store the image data
                 qrImageBuffer = new Uint8Array(arrayBuffer)
                 qrImageMimeType = blob.type
+                await persistQrImageToSession()
 
                 swlog('QR image stored, waiting for popup to ask for it')
-                
+
                 if (import.meta.env.MANIFEST_VERSION === 2) {
                     // Firefox
                     try {
                         await browser.browserAction.openPopup()
                     } catch (popupError) {
-                        browser.notifications.create({
-                            type: 'basic',
-                            iconUrl: 'icon-64.png',
-                            title: 'QR Code Captured',
-                            message: 'Click the extension icon to view the account'
-                        })
-                        
-                        browser.browserAction.setBadgeText({ text: '1' })
-                        browser.browserAction.setBadgeBackgroundColor({ color: '#00d1b2' })
+                        notifyQrCaptured()
                     }
                 }
                 else {
-                    await browser.action.openPopup()
+                    // Chrome MV3: openPopup() only works with a user gesture;
+                    // fall back to notification + badge (D7).
+                    try {
+                        await browser.action.openPopup()
+                    } catch (popupError) {
+                        swlog('⚠️ openPopup() failed, falling back to notification:', popupError?.message)
+                        notifyQrCaptured()
+                    }
                 }
 
                 return { success: true }
@@ -318,28 +421,38 @@ export default defineBackground({
                 
                 const tabId = tabs[0].id
 
-                await sendMessage('CLEANUP', {}, `content-script@${tabId}`)
+                // D14: the content script may be gone (navigation, frame
+                // teardown) — a rejected sendMessage must not break the
+                // hasQR answer.
+                try {
+                    await sendMessage('CLEANUP', {}, `content-script@${tabId}`)
+                } catch (e) {
+                    swlog('⚠️ CLEANUP could not be delivered:', e?.message ?? e)
+                }
 
-            return { success: true, hasQR: qrImageBuffer && qrImageMimeType }
+            const hasQR = await loadQrImage()
+            return { success: true, hasQR: hasQR ? qrImageMimeType : null }
         })
-        onMessage('GET_QR_BLOB', () => {
+        onMessage('GET_QR_BLOB', async () => {
             swlog('📢 GET_QR_BLOB message received')
-            if (qrImageBuffer && qrImageMimeType) {
+            const hasQR = await loadQrImage()
+            if (hasQR) {
                 const result = {
                     success: true,
                     imageBuffer: Array.from(qrImageBuffer),
                     mimeType: qrImageMimeType
                 }
-                
+
                 // Clear the stored data after retrieval
-                qrImageBuffer = null
-                qrImageMimeType = null
-                
-                // Clear badge (Firefox only)
-                if (import.meta.env.MANIFEST_VERSION === 2) {
-                    browser.browserAction.setBadgeText({ text: '' })
+                await clearQrImage()
+
+                // Clear the capture badge on both manifest versions
+                try {
+                    getActionApi().setBadgeText({ text: '' })
+                } catch (e) {
+                    // Badge API not available on some platforms
                 }
-                
+
                 swlog('QR blob data sent to popup')
                 return result
             } else {
@@ -347,8 +460,13 @@ export default defineBackground({
                 return { success: false, error: 'error.no_qr_image_data_available' }
             }
         })
-        onMessage('CAPTURE_SCREENSHOT', async ({ data }) => {
+        onMessage('CAPTURE_SCREENSHOT', async ({ data, sender }) => {
             swlog('📢 CAPTURE_SCREENSHOT message received')
+            // D5: screen capture is only served to the extension's own pages.
+            if (!isExtensionPageSender(sender)) {
+                swlog('🚫 CAPTURE_SCREENSHOT rejected: untrusted sender context', sender?.context)
+                return { success: false, error: 'error.untrusted_sender' }
+            }
             try {
                 const tabs = await browser.tabs.query({ active: true, currentWindow: true })
                 if (tabs.length === 0) {
@@ -399,23 +517,37 @@ export default defineBackground({
         onMessage('PAGE_ANALYZED', async ({ data, sender }) => {
             swlog('📢 PAGE_ANALYZED message received', data.hostname, 'has2FA:', data.has2FAForm)
 
-            if (!data.has2FAForm && !data.hasLoginForm) return null
+            // D5: only our content scripts report page analysis.
+            if (!isContentScriptSender(sender)) {
+                swlog('🚫 PAGE_ANALYZED rejected: untrusted sender context', sender?.context)
+                return null
+            }
+
+            const tabId = sender?.tabId ?? null
 
             const { autoFillAccounts } = await browser.storage.local.get({ autoFillAccounts: [] })
-            if (!autoFillAccounts?.length) return null
-
             const domain  = (data.hostname ?? '').replace(/^www\./, '').toLowerCase()
             // SECURITY: Use the same scoring function as the actual auto-fill
             // selection, so the badge count reflects only safe matches.
-            const matches = autoFillAccounts
+            const matches = (autoFillAccounts || [])
                 .map(a => ({ account: a, score: calcAutoFillScore(a, domain) }))
                 .filter(m => m.score > 0)
                 .map(m => m.account)
 
-            if (matches.length === 0) return null
+            if (!data.has2FAForm && !data.hasLoginForm) {
+                // D10: stale badges must not survive navigation to a
+                // non-login page.
+                clearTabBadge(tabId)
+                return null
+            }
 
-            const tabId = sender?.tabId
-            const badgeText = matches.length > 0 ? String(matches.length) : ''
+            if (matches.length === 0) {
+                // D10: zero matches — clear any previously set badge.
+                clearTabBadge(tabId)
+                return null
+            }
+
+            const badgeText = String(matches.length)
 
             if (tabId) {
                 try {
@@ -438,14 +570,26 @@ export default defineBackground({
         })
 
         // MARK: Auto-Fill
-        onMessage('SYNC_ACCOUNTS_METADATA', async ({ data }) => {
+        onMessage('SYNC_ACCOUNTS_METADATA', async ({ data, sender }) => {
             swlog('📢 SYNC_ACCOUNTS_METADATA message received')
+            // D5: the account list is pushed by the extension popup — never
+            // accept it from a page/content-script context.
+            if (!isExtensionPageSender(sender)) {
+                swlog('🚫 SYNC_ACCOUNTS_METADATA rejected: untrusted sender context', sender?.context)
+                return { status: false }
+            }
             await browser.storage.local.set({ autoFillAccounts: data.accounts })
             return { status: true }
         })
 
-        onMessage('REQUEST_AUTO_FILL', async ({ data }) => {
+        onMessage('REQUEST_AUTO_FILL', async ({ data, sender }) => {
             swlog('📢 REQUEST_AUTO_FILL message received')
+
+            // D5: auto-fill requests only come from our content scripts.
+            if (!isContentScriptSender(sender)) {
+                swlog('🚫 REQUEST_AUTO_FILL rejected: untrusted sender context', sender?.context)
+                return null
+            }
 
             const lockState = await isLocked()
             if (lockState?.locked) return null
@@ -480,6 +624,10 @@ export default defineBackground({
                     otp: otpData.password,
                     accountId: bestMatch.id,
                     service: bestMatch.service,
+                    // D9: when several accounts match the hostname, surface
+                    // which one was used so the user can catch a wrong pick.
+                    account: bestMatch.account || null,
+                    ambiguous: matches.length > 1,
                 }
             } catch (e) {
                 swlog('❌ Auto-fill OTP fetch failed:', e)
@@ -534,7 +682,7 @@ export default defineBackground({
          * Init the popup icon based on active color scheme
          */
         function setPopupIcon() {
-            detectDarkScheme().then((isDark) => {    
+            detectDarkScheme().then((isDark) => {
                 const scheme = isDark ? 'dark' : 'light'
                 const iconRes = {
                     path: {
@@ -550,6 +698,8 @@ export default defineBackground({
                 else {
                     browser.action.setIcon(iconRes)
                 }
+            }).catch(() => {
+                // D18: never let a rejected scheme detection bubble up
             })
         }
 
@@ -573,9 +723,9 @@ export default defineBackground({
                         justification: 'get media color scheme',
                     }).catch(() => {})
     
-                    const isDark = await browser.runtime.sendMessage('checkDarkTheme')
-                    browser.offscreen.closeDocument()
-    
+                    const isDark = await browser.runtime.sendMessage('checkDarkTheme').catch(() => null)
+                    browser.offscreen.closeDocument().catch(() => {})
+
                     return isDark
                 }
                 else {
@@ -638,6 +788,44 @@ export default defineBackground({
                 // Badge API not available on some platforms
             }
         }
+
+        /**
+         * Clear the per-tab match-count badge (D10). The global clearBadge()
+         * does not touch tab-scoped badges on Chrome.
+         *
+         * @param {number|null} tabId
+         */
+        function clearTabBadge(tabId) {
+            if (tabId == null) return
+            try {
+                getActionApi().setBadgeText({ text: '', tabId })
+            } catch (e) {
+                // Badge API not available on some platforms
+            }
+        }
+
+        /**
+         * Clear per-tab badges on every open tab (D10: lock must not leave
+         * stale match-count badges behind).
+         */
+        async function clearAllTabBadges() {
+            try {
+                const tabs = await browser.tabs.query({})
+                for (const tab of tabs) {
+                    clearTabBadge(tab.id)
+                }
+            } catch (e) {
+                // Tabs API not available
+            }
+        }
+
+        // D10: clear the per-tab badge when the tab navigates, so match
+        // counts do not leak across pages.
+        browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
+            if (changeInfo.status === 'loading' || changeInfo.url) {
+                clearTabBadge(tabId)
+            }
+        })
 
         /**
          * Update the toolbar badge based on cached accounts expiring within 10s
@@ -935,11 +1123,11 @@ export default defineBackground({
                     lockNow('startup()')
                 }
                 else {
-                    storeState().then(() => {
-                        browser.alarms.clear('lock-extension').then((cleared) => {
-                            if (cleared) swlog('⏰ lock-extension alarm cleared by startup()')
-                        })
-                    })
+                    // D3: an extension/browser update restarts the SW and must
+                    // NOT cancel the autolock. Re-arm the alarm from the
+                    // persisted lastActiveAt so the countdown continues (or
+                    // locks immediately when already elapsed).
+                    startLockTimer()
                 }
             })
         }
@@ -1005,15 +1193,24 @@ export default defineBackground({
 
         /**
          * Set worker state to locked
+         *
+         * RT6: EVERY path to this function is a lock transition, so the
+         * session-storage PAT copy is cleared here too — otherwise the
+         * decrypted PAT would resurrect after the next loadState().
          */
         function setStateToLocked() {
             state.pat = ''
             state.locked = true
+            runtimeSecrets.clear()
         }
 
+        /**
+         * Remove the vault key from session storage (D6: session-only, the
+         * E2EE key is never written to storage.local).
+         */
         function clearVaultKey() {
-            const sessionStorage = browser.storage.session ?? browser.storage.local
-            return sessionStorage.remove('vaultKey').then(() => true, () => false)
+            return (browser.storage.session?.remove?.('vaultKey') ?? Promise.resolve())
+                .then(() => true, () => false)
         }
 
         /**
@@ -1027,6 +1224,10 @@ export default defineBackground({
             // ready before any unlock/checkPassword call can run.
             const loadLockoutPromise = loadLockout()
 
+            // D1: capture the live PAT before the wholesale state replacement
+            // below — the persisted copy never contains it.
+            const memoryPat = state?.pat || ''
+
             return browser.storage.local.get({ [EXTSTATE_STORE]: null }).then(stores => {
                 state = stores[EXTSTATE_STORE]
 
@@ -1034,12 +1235,21 @@ export default defineBackground({
                     state.isLoaded = true
                     swlog('State loaded (from store)')
 
-                    // We force reload the kickAfter delay from the preferences store
-                    return setKickAfterDelayUsingPreferenceStore().then(() => {
-                        // We update the state to locked if kickAfter delay is elapsed since last activity
-                        if (state.kickAfter > 0 && state.lastActiveAt !== null && ((Date.now() - state.lastActiveAt) / 60000) > state.kickAfter) {
-                            setStateToLocked()
-                        }
+                    // D1: restore the runtime PAT (in-memory tier first, then
+                    // the session-storage copy) so a CHECK_IS_LOCKED round
+                    // trip cannot wipe a valid, unlocked PAT.
+                    return runtimeSecrets.get().then(sessionPat => {
+                        state.pat = resolveRuntimePat(state.pat, memoryPat, sessionPat)
+
+                        // We force reload the kickAfter delay from the preferences store
+                        return setKickAfterDelayUsingPreferenceStore().then(() => {
+                            // We update the state to locked if kickAfter delay is elapsed since last activity
+                            if (state.kickAfter > 0 && state.lastActiveAt !== null && ((Date.now() - state.lastActiveAt) / 60000) > state.kickAfter) {
+                                // RT6: this lock transition clears the
+                                // session-storage PAT copy via setStateToLocked.
+                                setStateToLocked()
+                            }
+                        })
                     })
                 } else {
                     return loadDefaultState()
@@ -1075,7 +1285,14 @@ export default defineBackground({
                 const preferencesStore = stores[PREFERENCE_STORE]
 
                 if (preferencesStore !== null) {
-                    const preferences = JSON.parse(preferencesStore)
+                    let preferences = null
+                    try {
+                        preferences = JSON.parse(preferencesStore)
+                    } catch (e) {
+                        // D18: corrupted persisted preferences must not crash
+                        // the whole state loading — fall through with defaults.
+                        swlog('❌ Cannot parse persisted preferences:', e)
+                    }
 
                     if (preferences !== null) {
                         state.kickAfter = (preferences.kickUserAfter !== null && preferences.kickUserAfter !== 'null') ? parseInt(preferences.kickUserAfter) : null
@@ -1105,6 +1322,8 @@ export default defineBackground({
             setStateToLocked()
             // Badge must never show stale TOTP data when the vault is locked
             clearBadge()
+            // D10: per-tab match-count badges are lock-sensitive too
+            clearAllTabBadges()
             storeState().then(() => {
                 password = null
                 clearVaultKey().then(() => {
@@ -1127,8 +1346,19 @@ export default defineBackground({
             else if (state.kickAfter !== null && state.kickAfter !== 'null') {
                 const kickAfter = parseInt(state.kickAfter)
                 if (kickAfter > 0) {
-                    browser.alarms.create('lock-extension', { delayInMinutes: kickAfter })
-                    swlog('⏰ lock-extension alarm started for ' + kickAfter + ' minutes from ' + state.lastActiveAt)
+                    // D15: count from the persisted lastActiveAt (last real
+                    // user activity), not from popup-close time.
+                    const elapsedMinutes = state.lastActiveAt !== null ? (Date.now() - state.lastActiveAt) / 60000 : 0
+                    const remainingMinutes = kickAfter - elapsedMinutes
+
+                    if (remainingMinutes <= 0) {
+                        swlog('⏰ kickAfter already elapsed since last activity, locking now')
+                        lockNow('startLockTimer() elapsed')
+                    }
+                    else {
+                        browser.alarms.create('lock-extension', { delayInMinutes: remainingMinutes })
+                        swlog('⏰ lock-extension alarm started for ' + remainingMinutes.toFixed(2) + ' minutes (kickAfter ' + kickAfter + ' from ' + state.lastActiveAt + ')')
+                    }
                 }
                 else swlog('⏰ No need of lock timer (kickAfter = ' + state.kickAfter + ')')
             }
@@ -1233,6 +1463,13 @@ export default defineBackground({
         function resetExt() {
             swlogTitle('RESETTING EXTENSION')
 
+            // RT6: reset is a lock transition — wipe runtime secrets and any
+            // session-scoped artifacts (vault key, QR buffer) too.
+            runtimeSecrets.clear()
+            clearVaultKey()
+            clearQrImage()
+            clearAllTabBadges()
+
             return browser.storage.local.clear()
                 .then(() => {
                     resetStateToDefaults()
@@ -1257,6 +1494,11 @@ export default defineBackground({
          */
         function unlockExt() {
             swlogTitle('UNLOCKING EXTENSION')
+
+            // D4: rehydrate the persisted lockout counters BEFORE reading the
+            // gate — on a cold SW the in-memory controller is empty and the
+            // backoff would otherwise not apply.
+            return loadLockout().then(() => {
 
             // Brute-force gate: refuse while a backoff window is active.
             const remaining = getLockoutRemainingMs()
@@ -1293,6 +1535,9 @@ export default defineBackground({
                             swlog('🔃 ✔️ Decrypted')
                             state.pat = decipheredPat
                             state.locked = false
+                            // D1: mirror the PAT into the runtime-secret tiers
+                            // (SW memory + storage.session when available).
+                            runtimeSecrets.set(state.pat)
                             swlog('🔓 Extension is now unlocked')
                             resetLockout()
                             return storeState().then(() => {
@@ -1321,8 +1566,10 @@ export default defineBackground({
                 swlog('♻️ ❌ Cannot unlock: Failed to load crypto params')
                 return { status: false, reason: 'error.failed_to_load_settings' }
             })
+
+            })
         }
-        /**
+/**
          * Check the given password is the current password by trying to decrypt the stored PAT
          * MARK: checkEncKey()
          *
@@ -1331,6 +1578,10 @@ export default defineBackground({
          */
         function checkPassword(pwd) {
             swlogTitle('CHECKING PASSWORD')
+
+            // D4: rehydrate the persisted lockout counters BEFORE reading the
+            // gate so the backoff applies on a cold SW.
+            return loadLockout().then(() => {
 
             // Brute-force gate: refuse while a backoff window is active.
             const remaining = getLockoutRemainingMs()
@@ -1350,6 +1601,13 @@ export default defineBackground({
 
                 const _pat = stores[CRYPTO_STORE]['encryptedApiToken'] || ''
 
+                // D16: feed the encryption params from the store before
+                // deriving — the in-memory salt may be null on a cold SW.
+                encryptionParams.iv = new Uint8Array(stores[CRYPTO_STORE].iv)
+                encryptionParams.salt = new Uint8Array(stores[CRYPTO_STORE].salt)
+                encryptionParams.default = stores[CRYPTO_STORE].default ?? true
+                encryptionParams.iterations = stores[CRYPTO_STORE].iterations ?? KDF_ITERATIONS_LEGACY
+
                 return deriveKey(pwd, encryptionParams.salt).then(encryptionKey => {
                     return decryptPat(_pat, encryptionKey).then(() => {
                         resetLockout()
@@ -1365,6 +1623,8 @@ export default defineBackground({
             }, () => {
                 recordFailedAttempt()
                 return { status: false }
+            })
+
             })
         }
 
@@ -1438,6 +1698,16 @@ export default defineBackground({
          */
         function changePassword(pwd) {
             swlogTitle('CHANGING PASSWORD')
+
+            // D2: re-encryption needs the decrypted PAT in memory. When the
+            // extension is locked the PAT is empty — abort with an explicit,
+            // i18n'd error instead of encrypting an empty token and locking
+            // the user out.
+            if (!state.pat) {
+                swlog('❌ Cannot change password: extension is locked (empty PAT)')
+                return Promise.resolve({ status: false, reason: 'error.unlock_extension_before_changing_password' })
+            }
+
             return generateNewCryptoParams().then(
                 () => setPassword(pwd)
             ).then(

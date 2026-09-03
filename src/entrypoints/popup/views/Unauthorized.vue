@@ -27,6 +27,10 @@
                 <p class="block">{{ $t('message.authentication_against_server_failed') }}</p>
                 <p class="block">{{ $t('message.is_pat_still_valid') }}</p>
                 <p class="block">{{ $t('message.retry_or_reset_extension') }}</p>
+                <!-- Non-blocking adoption: guide users whose PAT was revoked
+                     (password change, token revocation server-side) instead of
+                     leaving them to guess between Refresh and Reset. -->
+                <p class="block has-text-grey">{{ $t('message.pat_revoked_reset_hint') }}</p>
             </div>
         </template>
         <template #footer>

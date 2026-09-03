@@ -38,5 +38,22 @@
     },
     "autofillBadgeFilledGeneric": {
         "message": "2FA-Vault: OTP filled for account"
+    },
+    "qrCapturedNotificationTitle": {
+        "message": "QR Code Captured"
+    },
+    "qrCapturedNotificationMessage": {
+        "message": "Click the 2FA-Vault icon to view the account"
+    },
+    "autofillBadgeFilledFor": {
+        "message": "2FA-Vault: OTP filled for $SERVICE$ ($ACCOUNT$)",
+        "placeholders": {
+            "service": {
+                "content": "$1"
+            },
+            "account": {
+                "content": "$2"
+            }
+        }
     }
 }

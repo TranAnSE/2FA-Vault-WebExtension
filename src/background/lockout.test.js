@@ -126,3 +126,23 @@ describe('lockout', () => {
         expect(l.snapshot().failedAttempts).toBe(1)
     })
 })
+
+describe('persisted backoff rehydration (D4)', () => {
+    it('applies to a freshly recreated controller (cold service worker)', async () => {
+        const sharedStorage = createFakeStorage()
+        const first = createLockout({ storage: sharedStorage, now: () => 1_000_000 })
+        await first.load()
+        for (let i = 0; i < MAX_ATTEMPTS_BEFORE_BACKOFF; i++) {
+            await first.recordFailed()
+        }
+        expect(first.getRemainingMs()).toBeGreaterThan(0)
+
+        // Simulate SW suspension: brand-new controller over the same
+        // persisted storage. load() must rehydrate the backoff window so
+        // the remaining-ms gate applies before any unlock attempt.
+        const second = createLockout({ storage: sharedStorage, now: () => 1_000_000 })
+        expect(second.getRemainingMs()).toBe(0) // not loaded yet
+        await second.load()
+        expect(second.getRemainingMs()).toBeGreaterThan(0)
+    })
+})

@@ -7,5 +7,22 @@
     },
     "shortcutCopyOtpDesc": {
         "message": "포커스된 입력 필드의 OTP 복사"
+    },
+    "qrCapturedNotificationTitle": {
+        "message": "QR 코드 캡처됨"
+    },
+    "qrCapturedNotificationMessage": {
+        "message": "계정을 보려면 2FA-Vault 아이콘을 클릭하세요"
+    },
+    "autofillBadgeFilledFor": {
+        "message": "2FA-Vault: $SERVICE$($ACCOUNT$)에 OTP를 입력했습니다",
+        "placeholders": {
+            "service": {
+                "content": "$1"
+            },
+            "account": {
+                "content": "$2"
+            }
+        }
     }
 }

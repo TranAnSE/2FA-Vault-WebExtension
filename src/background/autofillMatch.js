@@ -123,3 +123,37 @@ export function matchAccountsToHostname(accounts, hostname) {
         .filter(m => m.score > 0)
         .sort((a, b) => b.score - a.score)
 }
+
+/**
+ * Whether a candidate input field qualifies as an OTP target (audit D8).
+ *
+ * A field qualifies only if:
+ *   - it declares autocomplete="one-time-code", OR
+ *   - it lives inside a <form> AND looks like a numeric OTP input
+ *     (numeric/number/tel inputmode, or maxlength in the 6-8 range).
+ *
+ * Free-standing text inputs outside a form are never auto-filled — that is
+ * how the old heuristic filled arbitrary page fields with secrets.
+ *
+ * Pure predicate over an attribute snapshot so it stays unit-testable;
+ * the content script supplies `inForm` via `el.closest('form') !== null`.
+ *
+ * @param {{autocomplete?: string|null, inputmode?: string|null, maxlength?: string|null, type?: string|null, inForm: boolean}} field
+ * @returns {boolean}
+ */
+export function qualifiesOtpField(field) {
+    if (!field) return false
+
+    if ((field.autocomplete || '').toLowerCase() === 'one-time-code') {
+        return true
+    }
+
+    if (!field.inForm) return false
+
+    const maxlength = parseInt(field.maxlength, 10)
+    const hasOtpLength = Number.isInteger(maxlength) && maxlength >= 6 && maxlength <= 8
+    const numericish = ['numeric', 'number', 'tel'].includes((field.inputmode || '').toLowerCase())
+        || ['number', 'tel'].includes((field.type || '').toLowerCase())
+
+    return hasOtpLength || numericish
+}
