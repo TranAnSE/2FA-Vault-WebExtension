@@ -1,5 +1,33 @@
 # Change log
 
+## [1.3.1] - 2026-09-03
+
+### Security
+
+- **Regression fix (from 1.3.0)**: runtime secrets (PAT, derived key) live in `browser.storage.session` / memory only, and `loadState()` no longer wipes the in-memory PAT on every lock-state check — the 1.3.0 "stop persisting plaintext secrets" change made a password-protected extension unusable (unlock -> 401 -> Unauthorized loop, dead copy-OTP shortcut and auto-fill). Every lock transition (kickAfter expiry, `onStartup`, popup close, reset) clears the session copy.
+- All sensitive webext-bridge handlers now verify the sender: `UNLOCK`, `SET_PASSWORD`, `CHANGE_PASSWORD`, `RESET_EXT`, `ENCRYPT_PAT`, `CAPTURE_SCREENSHOT`, `GET_PAT*`, `SYNC_ACCOUNTS_METADATA` accept extension-page senders only; `REQUEST_AUTO_FILL` and `PAGE_ANALYZED` accept content-script senders only.
+- The brute-force lockout counters are rehydrated from storage before the gates in `unlockExt()`/`checkPassword()`, so a suspended service worker no longer resets the backoff.
+- "Change password" aborts when the in-memory PAT is empty instead of overwriting the stored token with the encryption of an empty string.
+- Auto-fill only fills fields that look like OTP inputs (`autocomplete="one-time-code"` or inside a `<form>` with OTP-ish attributes), tracks the fields it filled, and re-fills only those — a page can no longer harvest a continuous OTP stream from arbitrary 6/8-char inputs.
+- The E2EE vault key is never written to durable storage (session/memory only; the `storage.local` fallback is gone).
+- `http://` server URLs are rejected for public hosts (localhost and private/link-local ranges stay allowed).
+
+### Changed
+
+- Auto-lock survives extension/browser updates (the alarm is re-armed from the persisted `lastActiveAt` instead of being cleared).
+- MV3 QR capture falls back to the MV2-style notification+badge when programmatic `openPopup()` fails, and the captured image survives service-worker suspension via session storage.
+- Ambiguous auto-fill matches name the account used in the toast; per-tab badges are cleared on navigation, zero-matches and lock.
+- QR-scan feedback works from the Start view; `IS_THERE_QR` tolerates tabs without a content script; the dead biometric enrollment path is removed.
+
+### Fixed
+
+- `checkPassword()` loads the crypto params before deriving (cold service worker no longer fails every password).
+- Double-scan races no longer permanently pollute page styles; the detector observer is debounced; icon/dark-scheme promise chains gained `.catch` handlers.
+
+### Tests
+
+- 43 -> 70 unit tests (`sessionSecrets`, `senderGate`, `validators`, `autofillMatch` qualification, lockout cold-SW rehydration).
+
 ## [1.3.0] - 2026-08-08
 
 ### Security
