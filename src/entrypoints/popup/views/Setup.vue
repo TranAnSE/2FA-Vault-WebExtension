@@ -3,7 +3,7 @@
     import { useNotify } from '@2fauth/ui'
     import { useErrorHandler } from '@2fauth/stores'
     import { usePreferenceStore } from '@/stores/preferenceStore'
-    import { isFilled, isHttpUrl, isInsecureHttpUrl } from '@popup/composables/validators'
+    import { isFilled, isHttpUrl, isInsecureHttpUrl, removeTrailingSlashes } from '@popup/composables/validators'
     import userService from '@popup/services/userService'
     import { FormButtons } from '@2fauth/formcontrols'
     import { LucideCheck } from 'lucide-vue-next'
@@ -157,6 +157,10 @@
 
     function validateHostUrl() {
         errors.value.hostUrl = ''
+
+        // #565: strip trailing slashes before validation/persistence so the
+        // stored hostUrl never yields broken `///api/v1` base URLs downstream.
+        _hostUrl.value = removeTrailingSlashes(_hostUrl.value)
 
         if (! isFilled(_hostUrl.value) || ! isHttpUrl(_hostUrl.value)) {
             errors.value.hostUrl = t('error.field_is_required_and_valid_url')

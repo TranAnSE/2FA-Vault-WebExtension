@@ -1,5 +1,11 @@
 # Change log
 
+## [1.3.2] - 2026-09-12
+
+### Fixed
+
+- Setup now strips trailing slashes from the 2FA-Vault server URL before validation and persistence (upstream 2FAuth-WebExtension v1.3.1 pattern, Bubka/2FAuth#565): entering `https://vault.example.com///` no longer produces broken `///api/v1` API base URLs. Subfolder installs (e.g. `https://host/2fauth/`) keep their path-internal slashes.
+
 ## [1.3.1] - 2026-09-03
 
 ### Security

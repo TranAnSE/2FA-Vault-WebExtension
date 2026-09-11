@@ -7,6 +7,19 @@ export function isHttpUrl(value) {
 }
 
 /**
+ * Strip trailing slashes from a host URL (upstream 2FAuth-WebExtension v1.3.1,
+ * Bubka/2FAuth#565): `https://host///` must not produce `///api/v1` base URLs.
+ * Only trailing slashes are removed — path-internal slashes (subfolder
+ * installs like `https://host/2fauth/`) survive intact.
+ *
+ * @param {string} value
+ * @returns {string}
+ */
+export function removeTrailingSlashes(value) {
+	return (value?.toString() ?? '').replace(/\/+$/, '')
+}
+
+/**
  * Whether the hostname is a local/private host for which plain HTTP is
  * an acceptable transport (RT8 / audit D17): localhost and *.localhost,
  * loopback (127.0.0.0/8, ::1), RFC1918 (10/8, 172.16/12, 192.168/16)

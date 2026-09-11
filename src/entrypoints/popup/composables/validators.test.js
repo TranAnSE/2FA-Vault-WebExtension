@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isFilled, isHttpUrl, isPrivateHost, isInsecureHttpUrl } from './validators.js'
+import { isFilled, isHttpUrl, isPrivateHost, isInsecureHttpUrl, removeTrailingSlashes } from './validators.js'
 
 describe('isFilled', () => {
 	it('detects empty and filled values', () => {
@@ -16,6 +16,22 @@ describe('isHttpUrl', () => {
 		expect(isHttpUrl('https://example.com')).toBe(true)
 		expect(isHttpUrl('ftp://example.com')).toBe(false)
 		expect(isHttpUrl('example.com')).toBe(false)
+	})
+})
+
+describe('removeTrailingSlashes (Bubka/2FAuth#565)', () => {
+	it('strips one or more trailing slashes', () => {
+		expect(removeTrailingSlashes('https://vault.example.com/')).toBe('https://vault.example.com')
+		expect(removeTrailingSlashes('https://vault.example.com///')).toBe('https://vault.example.com')
+	})
+
+	it('leaves URLs without a trailing slash unchanged', () => {
+		expect(removeTrailingSlashes('https://vault.example.com')).toBe('https://vault.example.com')
+	})
+
+	it('preserves path-internal slashes (subfolder installs)', () => {
+		expect(removeTrailingSlashes('https://vault.example.com/2fauth/')).toBe('https://vault.example.com/2fauth')
+		expect(removeTrailingSlashes('https://vault.example.com/2fauth')).toBe('https://vault.example.com/2fauth')
 	})
 })
 
