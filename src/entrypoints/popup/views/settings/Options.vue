@@ -37,6 +37,7 @@
             'getOtpOnRequest',
             'autoCloseTimeout',
             'showNextOtp',
+            'enableFavorites',
         ].filter(pref => settingStore.lockedPreferences.includes(pref));
     })
 
