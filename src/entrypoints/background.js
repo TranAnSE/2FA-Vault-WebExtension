@@ -103,7 +103,7 @@ export default defineBackground({
         let state
         resetStateToDefaults()
 
-        let enable_debug = 'development' == process.env.NODE_ENV
+        let enable_debug = 'development' == process.env.NODE_ENV || import.meta.env.MODE === 'e2e'
         // let enable_debug = true
         let password = null
         

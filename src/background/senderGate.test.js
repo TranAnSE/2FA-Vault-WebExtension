@@ -1,8 +1,12 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { isExtensionPageSender, isContentScriptSender } from './senderGate.js'
 
 describe('senderGate', () => {
     describe('isExtensionPageSender', () => {
+        afterEach(() => {
+            vi.unstubAllEnvs()
+        })
+
         it('accepts popup and options contexts without a tab', () => {
             expect(isExtensionPageSender({ context: 'popup' })).toBe(true)
             expect(isExtensionPageSender({ context: 'options' })).toBe(true)
@@ -25,6 +29,24 @@ describe('senderGate', () => {
             expect(isExtensionPageSender({})).toBe(false)
             expect(isExtensionPageSender(null)).toBe(false)
             expect(isExtensionPageSender(undefined)).toBe(false)
+        })
+
+        it('accepts tab-attached popup/options senders in e2e harness builds', () => {
+            // The Playwright harness drives popup.html in a regular tab, so
+            // the lazily-resolved sender.tab makes every popup sender look
+            // tab-attached. Only e2e builds (wxt build -m e2e) relax this.
+            vi.stubEnv('MODE', 'e2e')
+            expect(isExtensionPageSender({ context: 'popup', tabId: 7, tab: { id: 7 } })).toBe(true)
+            expect(isExtensionPageSender({ context: 'options', tabId: 7 })).toBe(true)
+            // Non-extension contexts stay rejected in e2e builds too.
+            expect(isExtensionPageSender({ context: 'content-script', tabId: 7 })).toBe(false)
+            expect(isExtensionPageSender({ context: 'window', tabId: 7 })).toBe(false)
+            expect(isExtensionPageSender(null)).toBe(false)
+        })
+
+        it('keeps the strict tab check outside e2e builds', () => {
+            // Default vitest MODE is 'test': shipped behavior must hold.
+            expect(isExtensionPageSender({ context: 'popup', tabId: 7 })).toBe(false)
         })
     })
 

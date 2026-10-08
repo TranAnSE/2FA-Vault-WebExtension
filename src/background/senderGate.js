@@ -3,9 +3,9 @@
  *
  * webext-bridge tags every message with a `sender.context` value
  * ('popup' | 'options' | 'content-script' | 'window' | 'devtools' |
- * 'background') and sets `sender.tabId` when the message originates from
- * a tab's content script. Sensitive handlers must verify the sender
- * context before acting:
+ * 'background') and resolves `sender.tab` lazily from the port link for
+ * tab-attached senders. Sensitive handlers must verify the sender context
+ * before acting:
  *
  * - extension-page-only handlers (password/PAT mutations, screenshots)
  *   accept only popup/options senders with no tab attached;
@@ -19,15 +19,24 @@
  * Whether the sender is one of the extension's own UI pages (popup/options)
  * and NOT a tab context. Used for handlers that mutate or reveal secrets.
  *
+ * E2E harness builds (`wxt build -m e2e`, npm run build:e2e) accept the
+ * claimed popup/options context even when a tab is attached: the Playwright
+ * harness (2FA-Vault tests/e2e/webextension/) must drive popup.html in a
+ * regular tab because Playwright cannot open the toolbar popup, and the
+ * lazily-resolved sender.tab then makes every sender look tab-attached.
+ * Content scripts claim context 'content-script' and never reach the
+ * popup/options branch, so they stay rejected in e2e builds too. Shipped
+ * (production/development) builds keep the strict tab check.
+ *
  * @param {object} sender The webext-bridge sender Endpoint.
  * @returns {boolean}
  */
 export function isExtensionPageSender(sender) {
     if (!sender) return false
-    // Any tab-attached sender is a page context, even if it claims otherwise.
-    if (sender.tabId != null || sender.tab != null) return false
     const context = sender.context
-    return context === 'popup' || context === 'options'
+    if (context !== 'popup' && context !== 'options') return false
+    if (import.meta.env?.MODE === 'e2e') return true
+    return sender.tabId == null && sender.tab == null
 }
 
 /**

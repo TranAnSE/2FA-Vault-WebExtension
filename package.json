@@ -20,7 +20,8 @@
         "lint": "eslint . --fix",
         "test": "vitest run",
         "test:watch": "vitest",
-        "get-translations": "node ./scripts/crowdin-get-translations.js"
+        "get-translations": "node ./scripts/crowdin-get-translations.js",
+        "build:e2e": "wxt build -b chrome -m e2e"
     },
     "devDependencies": {
         "@2fauth/formcontrols": "file:../2FA-Vault-Components/packages/formcontrols",
