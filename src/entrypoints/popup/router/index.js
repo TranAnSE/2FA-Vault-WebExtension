@@ -29,24 +29,25 @@ const router = createRouter({
 	]
 })
 
-router.beforeEach((to, from, next) => {
+router.beforeEach((to, from) => {
     const middlewares = to.meta.middlewares
-    const settingStore = useSettingStore()
-
-    const stores = {
-        settingStore: settingStore,
-     }
-    const nextMiddleware = {}
-    const context = { to, from, next, nextMiddleware, stores }
 
     if (!middlewares) {
-        return next();
+        return
     }
 
-    middlewares[0]({
-        ...context,
-        nextMiddleware: middlewarePipeline(context, middlewares, 1),
-    });
+    const settingStore = useSettingStore()
+
+    return middlewarePipeline(
+        {
+            to,
+            from,
+            stores: {
+                settingStore,
+            },
+        },
+        middlewares
+    )
 })
 
 export default router

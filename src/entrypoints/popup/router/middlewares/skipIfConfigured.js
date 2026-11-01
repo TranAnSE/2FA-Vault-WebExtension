@@ -1,4 +1,4 @@
-export default async function skipIfConfigured({ to, next, nextMiddleware, stores }) {
+export default async function skipIfConfigured({ to, stores }) {
     console.log('[EXT:MW:skipIfConfigured] Entering middleware to reach the ' + to.name + ' view')
     const { settingStore } = stores
 
@@ -6,8 +6,9 @@ export default async function skipIfConfigured({ to, next, nextMiddleware, store
 
     if (settingStore.isConfigured) {
         console.log('[EXT:MW:skipIfConfigured] Extension already configured, moving to the accounts view')
-        next({ name: 'accounts' })
-    } else {
-        nextMiddleware()
+
+        return { name: 'accounts' }
     }
+
+    return true
 }
