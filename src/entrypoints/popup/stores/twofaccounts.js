@@ -210,7 +210,7 @@ export const useTwofaccounts = defineStore('twofaccounts', () => {
                 items.value[index].is_favorite = is_favorite
             })
             .catch(error => {
-                if (error.response.status < 500) {
+                if (error.response && error.response.status < 500) {
                     notify.alert({ text: i18n.global.t('error.failed_to_set_favorite_status') })
                 }
                 else {
