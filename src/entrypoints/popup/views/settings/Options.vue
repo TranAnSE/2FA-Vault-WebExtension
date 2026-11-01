@@ -38,6 +38,7 @@
             'getOtpOnRequest',
             'autoCloseTimeout',
             'showNextOtp',
+            'enableFavorites',
         ].filter(pref => settingStore.lockedPreferences.includes(pref));
     })
 
@@ -182,6 +183,7 @@
 </script>
 
 <template>
+    <div class="ext-full-height">
     <StackLayout>
         <template #header>
             <TabBar :tabs="tabs" :active-tab="'settings.options'" :is-responsive="false" @tab-selected="(to) => router.push({ name: to })" />
@@ -206,6 +208,8 @@
                 </div> -->
                 <!-- theme -->
                 <FormToggle v-model="preferenceStore.theme" @update:model-value="applyTheme()" :choices="themes" fieldName="theme" :isLocked="settingStore.lockedPreferences.includes('theme')" label="field.theme" help="field.theme.help"/>
+                <!-- enable favorites -->
+                <FormCheckbox v-if="settingStore.hasFeature_favorites" v-model="preferenceStore.enableFavorites" @update:model-value="notifySuccess" fieldName="enableFavorites" :isLocked="settingStore.lockedPreferences.includes('enableFavorites')" label="field.enable_favorites" help="field.enable_favorites.help" />
                 <!-- show icon -->
                 <FormCheckbox v-model="preferenceStore.showAccountsIcons" @update:model-value="notifySuccess" fieldName="showAccountsIcons" :isLocked="settingStore.lockedPreferences.includes('showAccountsIcons')" label="field.show_accounts_icons" help="field.show_accounts_icons.help" />
                 <!-- password format -->
@@ -254,4 +258,5 @@
             </VueFooter>
         </template>
     </StackLayout>
+    </div>
 </template>
