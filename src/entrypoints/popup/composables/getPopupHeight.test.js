@@ -28,7 +28,7 @@ describe('getPopupHeight', () => {
         expect(getPopupHeight()).toBe(500)
     })
 
-    it('prefers the screen branch when it sits exactly at the 600px ceiling minus offset', () => {
+    it('falls back to innerHeight when the screen branch sits exactly at the ceiling', () => {
         stubWindow({ innerHeight: 900, availHeight: 700 })
         // 700 - 100 = 600, NOT < 600 -> innerHeight branch
         expect(getPopupHeight()).toBe(900)
