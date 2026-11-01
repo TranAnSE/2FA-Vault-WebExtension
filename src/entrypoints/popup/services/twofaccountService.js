@@ -65,6 +65,10 @@ export default {
         return getApiClient().delete('/twofaccounts?ids=' + ids, { ...config })
     },
 
+    toggleFavorite(id, is_favorite, config = {}) {
+        return getApiClient().patch('/twofaccounts/' + id + '/favorite', { 'is_favorite': is_favorite }, { ...config })
+    },
+
     export(ids, otpauthFormat, config = {}) {
         return getApiClient().get('/twofaccounts/export?ids=' + ids + (otpauthFormat ? '&otpauth=1' : ''), { ...config })
     },

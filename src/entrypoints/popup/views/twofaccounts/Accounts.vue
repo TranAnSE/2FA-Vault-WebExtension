@@ -7,12 +7,13 @@
     import { usePreferenceStore } from '@/stores/preferenceStore'
     import { useSettingStore } from '@/stores/settingStore'
     import { asArray } from '@popup/composables/helpers'
+    import { getPopupHeight } from '@popup/composables/getPopupHeight'
     import { useNotify, SearchBox } from '@2fauth/ui'
     import { useErrorHandler } from '@2fauth/stores'
     import { useTwofaccounts } from '@popup/stores/twofaccounts'
     import { useGroups } from '@popup/stores/groups'
     import { UseColorMode } from '@vueuse/components'
-    import { LucideLoaderCircle, LucideEye, LucideEyeOff, LucideCircleAlert, LucideChevronDown } from 'lucide-vue-next'
+    import { LucideLoaderCircle, LucideEye, LucideEyeOff, LucideCircleAlert, LucideChevronDown, LucideStar } from 'lucide-vue-next'
     import { Dots, OtpDisplay, DotsController, Spinner, useVisiblePassword, GroupSwitch } from '@2fauth/ui'
 
     const { t } = useI18n()
@@ -29,6 +30,7 @@
     const isRenewingOTPs = ref(false)
     const renewedPeriod = ref(null)
     const opacities = ref({})
+    const stackWrapper = useTemplateRef('stackWrapper')
     
     const otpDisplay = ref(null)
     const accountParams = ref({
@@ -41,7 +43,8 @@
         algorithm : '',
         period : null,
         counter : null,
-        image : ''
+        image : '',
+        is_favorite: false
     })
     const dotsControllers = ref([])
     const dotsRefs = ref([])
@@ -63,6 +66,13 @@
     })
 
     /**
+     * Favorites UI gate: the server must expose the feature AND the user
+     * preference must be on. When the gate is off the favorites-only filter
+     * is forced down so the view never queries a forbidden state.
+     */
+    const useFavorites = computed(() => settingStore.hasFeature_favorites && preferenceStore.enableFavorites)
+
+    /**
      * Shows rotating OTP for the provided account
      */
      function showOTP(account) {
@@ -72,11 +82,25 @@
         accountParams.value.service = account.service
         accountParams.value.account = account.account
         accountParams.value.icon = account.icon
+        accountParams.value.is_favorite = account.is_favorite
 
         nextTick().then(() => {
             showOtpInModal.value = true
             otpDisplay.value.show(account.id);
         })
+    }
+
+    /**
+     * Toggles the favorite status of a given account and mirrors the new
+     * state into the open OtpDisplay modal when there is one
+     */
+    async function toggleOtpDisplayFavorite(accountId) {
+        await twofaccounts.toggleIsFavorite(accountId)
+        const account = twofaccounts.getById(accountId)
+
+        if (account != undefined) {
+            otpDisplay.value?.setFavorite(account.is_favorite)
+        }
     }
 
     /**
@@ -308,6 +332,12 @@
         //     submitQrCode()
         // }
 
+        // Gate freshness: a server-side disable of the favorites feature or
+        // preference takes the filter down immediately (no 403 loop).
+        if (! useFavorites.value) {
+            twofaccounts.showFavoritesOnly = false
+        }
+
         // This SFC is reached only if the user has some twofaccounts (see the starter middleware).
         // This allows to display accounts without latency.
         //
@@ -317,11 +347,14 @@
         }
         else {
             twofaccounts.fetchForCurrentVaultState().then(() => {
-                // if (twofaccounts.backendWasNewer) {
-                //     notify.info({ text: trans('commons.data_refreshed_to_reflect_server_changes'), duration: 10000 })
-                // }
                 if (twofaccounts.isEmpty) {
                     router.push({ name: 'start'})
+                }
+                else {
+                    nextTick().then(() => {
+                        const availHeight = getPopupHeight()
+                        stackWrapper.value.style.height = availHeight + 'px'
+                    })
                 }
             })
         }
@@ -357,7 +390,7 @@
 
 <template>
     <UseColorMode v-slot="{ mode }">
-    <div class="ext-full-height">
+    <div ref="stackWrapper" class="ext-full-height">
         <StackLayout>
             <template #header v-if="showAccounts || showGroupSwitch">
                 <div class="header">
@@ -378,6 +411,9 @@
                         </button>
                     </div>
                     <div v-else>
+                        <button v-if="useFavorites" type="button" id="btnShowFavoritesOnly" :title="$t('tooltip.show_favorites_only')" tabindex="1" class="button is-text is-like-text has-text-grey-dark" :class="{'has-text-warning' : twofaccounts.showFavoritesOnly, 'has-text-grey' : mode != 'dark' && !twofaccounts.showFavoritesOnly}" @click.stop="twofaccounts.showFavoritesOnly = !twofaccounts.showFavoritesOnly">
+                            <LucideStar class="mt-1" :fill="twofaccounts.showFavoritesOnly ? '#ffb400' : 'none'" :stroke-width="1.5" />
+                        </button>
                         <button type="button" id="btnShowGroupSwitch" :title="$t('tooltip.show_group_selector')" tabindex="1" class="button is-text is-like-text has-text-grey-dark" :class="{'has-text-grey' : mode != 'dark'}" @click.stop="showGroupSwitch = !showGroupSwitch">
                             <template v-if="twofaccounts.groupLessOnly">
                                 {{ $t('label.group_less') }} ({{ twofaccounts.filteredCount }})&nbsp;
@@ -527,8 +563,10 @@
                 :preferences="preferenceStore.$state"
                 :twofaccountService="otpService"
                 :can_showNextOtp="settingStore.hasFeature_showNextOtp"
+                :can_showFavorite="useFavorites"
                 :iconPathPrefix="settingStore.hostUrl"
                 @please-close-me="showOtpInModal = false"
+                @please-toggle-favorite="toggleOtpDisplayFavorite"
                 @please-clear-search="twofaccounts.filter = ''"
                 @kickme="lockExtension"
                 @please-update-activeGroup="(newActiveGroup) => preferenceStore.activeGroup = newActiveGroup"

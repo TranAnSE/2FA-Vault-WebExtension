@@ -1,5 +1,21 @@
 # Change log
 
+## Unreleased
+
+### Added
+
+- Favorites management (upstream 8684fe2 + 22a9fc6, requires a 2FA-Vault server exposing the `favorites` feature flag): favorite star in the account list and OTP modal, favorites-only filter toggle, `enableFavorites` user preference in Options (also server-lockable). A server-side disable of the feature or preference takes the extension's favorites UI down on the next popup open — the gate value syncs in full, preventing 403 loops (red-team finding 7).
+
+### Fixed
+
+- Popup renders correctly at browser zoom >100% (upstream 745e0f0, Bitwarden-style height computation); the fixed 590px max-height is gone.
+- Settings views (About/Extension/Options) fill the popup height instead of collapsing.
+
+### Changed
+
+- Popup router middlewares use vue-router's return-based control flow; the deprecated `next()` callback is gone (upstream aac013b). Lock/config gating behavior is unchanged.
+- Skipped upstream commits, on purpose: `8d7ba8b` (groupChips notification — the fork extension has no groupChips UI) and `4b5c5ec` (`getWithoutSecret` — meaningless against the fork's zero-knowledge server where secrets are E2EE ciphertext and OTPs are generated locally).
+
 ## [1.3.2] - 2026-09-12
 
 ### Fixed

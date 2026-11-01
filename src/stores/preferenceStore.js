@@ -36,6 +36,7 @@ export const usePreferenceStore = defineStore('preferences', () => {
     const notifyOnFailedLogin = ref(false)
     const timezone = ref('UTC')
     const sortCaseSensitive = ref(false)
+    const enableFavorites = ref(true)
     const autoCloseTimeout = ref(2)
     const AutoSaveQrcodedAccount = ref(false)
     const showEmailInFooter = ref(true)
@@ -71,6 +72,7 @@ export const usePreferenceStore = defineStore('preferences', () => {
         notifyOnFailedLogin.value = false
         timezone.value = 'UTC'
         sortCaseSensitive.value = false
+        enableFavorites.value = true
         autoCloseTimeout.value = 2
         AutoSaveQrcodedAccount.value = false
         showEmailInFooter.value = true
@@ -119,7 +121,13 @@ export const usePreferenceStore = defineStore('preferences', () => {
     function syncWithServer(onlyLockedPreferences = true) {
         userService.getPreferences({returnError: true})
         .then((response) => {
-            this.updateWith(response.data, onlyLockedPreferences)
+            // Gate freshness (red-team finding 7): syncWithServer copies only
+            // LOCKED preferences by default, so a server-side disable of
+            // enableFavorites would never reach an already-configured
+            // extension, whose UI would then 403-loop on every toggle.
+            // This key always syncs its full value (and theme/lang, which
+            // updateWith applies regardless of the restriction).
+            this.updateWith(response.data, onlyLockedPreferences, ['enableFavorites'])
         })
         .catch(() => {
             notify.alert({ text: t('error.data_cannot_be_refreshed_from_server') })
@@ -132,7 +140,7 @@ export const usePreferenceStore = defineStore('preferences', () => {
      * @param {Array<object>} preferences The values to use to update the store
      * @param {Boolean} onlyLockedPreferences Restrict the update to locked preferences only
      */
-    function updateWith(preferences, onlyLockedPreferences = true) {
+    function updateWith(preferences, onlyLockedPreferences = true, alwaysSyncKeys = []) {
         if (!preferences
             || !Array.isArray(preferences)
             || preferences.some(p => p == null || !p.hasOwnProperty('key') || !p.hasOwnProperty('value'))
@@ -154,7 +162,7 @@ export const usePreferenceStore = defineStore('preferences', () => {
 
         preferences.forEach(preference => {
             if (this.$state.hasOwnProperty(preference.key)) {
-                if (! onlyLockedPreferences || (preference.hasOwnProperty('locked') && preference.locked == true)) {
+                if (! onlyLockedPreferences || alwaysSyncKeys.includes(preference.key) || (preference.hasOwnProperty('locked') && preference.locked == true)) {
                     this[preference.key] = preference.value
                 }
 
@@ -197,6 +205,7 @@ export const usePreferenceStore = defineStore('preferences', () => {
         notifyOnFailedLogin,
         timezone,
         sortCaseSensitive,
+        enableFavorites,
         autoCloseTimeout,
         AutoSaveQrcodedAccount,
         showEmailInFooter,

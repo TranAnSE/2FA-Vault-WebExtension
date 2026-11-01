@@ -19,6 +19,7 @@ export const useSettingStore = defineStore('settings', () => {
     const isConfigured = computed(() => hostUrl.value.length > 0)
     const hasFeature_showNextOtp = computed(() => hasLockedPreferences.value)
     const hasFeature_iconPack = computed(() => hasFeature('iconPack'))
+    const hasFeature_favorites = computed(() => hasFeature('favorites'))
 
     // ACTIONS
 
@@ -75,6 +76,7 @@ export const useSettingStore = defineStore('settings', () => {
         isConfigured,
         hasFeature_showNextOtp,
         hasFeature_iconPack,
+        hasFeature_favorites,
 
         // ACTIONS
         $reset,

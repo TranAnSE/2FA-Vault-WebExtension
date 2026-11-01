@@ -1,8 +1,11 @@
 import { defineStore } from 'pinia'
 import { usePreferenceStore } from '@/stores/preferenceStore'
+import { useNotify } from '@2fauth/ui'
+import { useErrorHandler } from '@2fauth/stores'
 import twofaccountService from '@popup/services/twofaccountService'
 import userService from '@popup/services/userService'
 import { asArray } from '@popup/composables/helpers'
+import i18n from '@/utils/i18n'
 import { decryptAccount, deriveVaultKey, exportKey, importKey, verifyVaultKey } from '@popup/services/e2eeCryptoService'
 
 export const useTwofaccounts = defineStore('twofaccounts', () => {
@@ -19,6 +22,7 @@ export const useTwofaccounts = defineStore('twofaccounts', () => {
     const isFetching = ref(false)
     const groupLessOnly = ref(false)
     const encryptedVaultUnlocked = ref(false)
+    const showFavoritesOnly = ref(false)
 
     // GETTERS
 
@@ -30,14 +34,20 @@ export const useTwofaccounts = defineStore('twofaccounts', () => {
                     return item.group_id == null
                 }
                 else if (parseInt(preferenceStore.activeGroup) > 0) {
-                    return ((item.service ? item.service.toLowerCase().includes(filter.value.toLowerCase()) : false) ||
+                    var itemMatch = ((item.service ? item.service.toLowerCase().includes(filter.value.toLowerCase()) : false) ||
                         item.account.toLowerCase().includes(filter.value.toLowerCase())) &&
                         (item.group_id == parseInt(preferenceStore.activeGroup))
                 }
                 else {
-                    return ((item.service ? item.service.toLowerCase().includes(filter.value.toLowerCase()) : false) ||
+                    var itemMatch = ((item.service ? item.service.toLowerCase().includes(filter.value.toLowerCase()) : false) ||
                         item.account.toLowerCase().includes(filter.value.toLowerCase()))
                 }
+
+                if (showFavoritesOnly.value) {
+                    itemMatch = itemMatch && item.is_favorite == true
+                }
+
+                return itemMatch
             }
         )
     })
@@ -71,6 +81,7 @@ export const useTwofaccounts = defineStore('twofaccounts', () => {
         fetchedOn.value = null
         isFetching.value = false
         encryptedVaultUnlocked.value = false
+        showFavoritesOnly.value = false
     }
 
     async function clearVaultSession() {
@@ -183,6 +194,42 @@ export const useTwofaccounts = defineStore('twofaccounts', () => {
         return items.value.filter(a => a.period == period).map(item => item.id)
     }
     
+    /**
+     * Toggle the favorite status of an account (optimistic PATCH with
+     * revert-on-error handled by the caller-provided error path)
+     */
+    async function toggleIsFavorite(accountId) {
+        const notify = useNotify()
+        const errorHandler = useErrorHandler()
+        const index = items.value.findIndex(acc => acc.id === parseInt(accountId))
+
+        if (index > -1) {
+            const is_favorite = !items.value[index].is_favorite
+
+            await twofaccountService.toggleFavorite(accountId, is_favorite, { returnError: true }).then(() => {
+                items.value[index].is_favorite = is_favorite
+            })
+            .catch(error => {
+                if (error.response.status < 500) {
+                    notify.alert({ text: i18n.global.t('error.failed_to_set_favorite_status') })
+                }
+                else {
+                    errorHandler.show(error)
+                }
+            })
+        }
+        else {
+            notify.alert({ text: i18n.global.t('error.failed_to_set_favorite_status') })
+        }
+    }
+
+    /**
+     * Get a 2FA account by its ID
+     */
+    function getById(id) {
+        return items.value.find(a => a.id == id)
+    }
+
     return {
         // STATE
         items,
@@ -193,6 +240,7 @@ export const useTwofaccounts = defineStore('twofaccounts', () => {
         isFetching,
         groupLessOnly,
         encryptedVaultUnlocked,
+        showFavoritesOnly,
 
         // GETTERS
         filtered,
@@ -209,5 +257,7 @@ export const useTwofaccounts = defineStore('twofaccounts', () => {
         fetchEncrypted,
         clearVaultSession,
         accountIdsWithPeriod,
+        toggleIsFavorite,
+        getById,
     }
 })
