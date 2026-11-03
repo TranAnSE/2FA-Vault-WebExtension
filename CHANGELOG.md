@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Skipped (upstream pull sync 2026-11-03)
+
+- Upstream Bubka main (32 commits through bf45f1b) merged ancestry-only (`-s ours`): favorites/zoom/height/next()/trailing-slash already ported; Sharing wave excluded by design (fork E2EE); dep bumps superseded by newer security bumps. Deferred for a future wave: settings tabbar icons (45b718f), GroupCallToSwitch usage (49b1e37), v-model arg fix (8fbdf3a), pseudo-group filter fix (1a10ff8), show-buttons prop removal (3f5add8).
+
 ### Added
 
 - Favorites management (upstream 8684fe2 + 22a9fc6, requires a 2FA-Vault server exposing the `favorites` feature flag): favorite star in the account list and OTP modal, favorites-only filter toggle, `enableFavorites` user preference in Options (also server-lockable). A server-side disable of the feature or preference takes the extension's favorites UI down on the next popup open — the gate value syncs in full, preventing 403 loops (red-team finding 7).
