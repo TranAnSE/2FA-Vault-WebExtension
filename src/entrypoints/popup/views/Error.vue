@@ -53,7 +53,7 @@
 
 <template>
     <div class="ext-full-height">
-        <Modal v-model="showModal">
+        <Modal v-model:is-active="showModal">
             <UseColorMode v-slot="{ mode }">
                 <div class="error-message" v-if="$route.name == '404' || $route.name == 'notFound'">
                     <p class="error-404"></p>

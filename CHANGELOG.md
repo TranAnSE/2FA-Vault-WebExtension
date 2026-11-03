@@ -4,7 +4,11 @@
 
 ### Skipped (upstream pull sync 2026-11-03)
 
-- Upstream Bubka main (32 commits through bf45f1b) merged ancestry-only (`-s ours`): favorites/zoom/height/next()/trailing-slash already ported; Sharing wave excluded by design (fork E2EE); dep bumps superseded by newer security bumps. Deferred for a future wave: settings tabbar icons (45b718f), GroupCallToSwitch usage (49b1e37), v-model arg fix (8fbdf3a), pseudo-group filter fix (1a10ff8), show-buttons prop removal (3f5add8).
+- Upstream Bubka main (32 commits through bf45f1b) merged ancestry-only (`-s ours`): favorites/zoom/height/next()/trailing-slash already ported; Sharing wave excluded by design (fork E2EE); dep bumps superseded by newer security bumps. The five deferred items were ported the same day (see Added below).
+
+### Added
+
+- Ported the deferred upstream wave: settings tabbar icons (45b718f), GroupCallToSwitch replaces the inline group-switch button (49b1e37; adapted — the popup tracks group-less via `twofaccounts.groupLessOnly` and has no sharing pseudo-groups, so the component receives `activeGroup = groupLessOnly ? -1 : activeGroup` and `useShare="false"`), Modal `v-model:is-active` fix (8fbdf3a), pseudo-group name fix — `activeGroup > 0` instead of `!= 0` so group-less (-1) stops showing a stale group name (1a10ff8), VueFooter `show-buttons` prop removal (3f5add8).
 
 ### Added
 

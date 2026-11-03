@@ -13,8 +13,8 @@
     import { useTwofaccounts } from '@popup/stores/twofaccounts'
     import { useGroups } from '@popup/stores/groups'
     import { UseColorMode } from '@vueuse/components'
-    import { LucideLoaderCircle, LucideEye, LucideEyeOff, LucideCircleAlert, LucideChevronDown, LucideStar } from 'lucide-vue-next'
-    import { Dots, OtpDisplay, DotsController, Spinner, useVisiblePassword, GroupSwitch } from '@2fauth/ui'
+    import { LucideLoaderCircle, LucideEye, LucideEyeOff, LucideCircleAlert, LucideStar } from 'lucide-vue-next'
+    import { Dots, OtpDisplay, DotsController, Spinner, useVisiblePassword, GroupCallToSwitch, GroupSwitch } from '@2fauth/ui'
 
     const { t } = useI18n()
     const router = useRouter()
@@ -414,18 +414,12 @@
                         <button v-if="useFavorites" type="button" id="btnShowFavoritesOnly" :title="$t('tooltip.show_favorites_only')" tabindex="1" class="button is-text is-like-text has-text-grey-dark" :class="{'has-text-warning' : twofaccounts.showFavoritesOnly, 'has-text-grey' : mode != 'dark' && !twofaccounts.showFavoritesOnly}" @click.stop="twofaccounts.showFavoritesOnly = !twofaccounts.showFavoritesOnly">
                             <LucideStar class="mt-1" :fill="twofaccounts.showFavoritesOnly ? '#ffb400' : 'none'" :stroke-width="1.5" />
                         </button>
-                        <button type="button" id="btnShowGroupSwitch" :title="$t('tooltip.show_group_selector')" tabindex="1" class="button is-text is-like-text has-text-grey-dark" :class="{'has-text-grey' : mode != 'dark'}" @click.stop="showGroupSwitch = !showGroupSwitch">
-                            <template v-if="twofaccounts.groupLessOnly">
-                                {{ $t('label.group_less') }} ({{ twofaccounts.filteredCount }})&nbsp;
-                            </template>
-                            <template v-else-if="groups.current">
-                                {{ groups.current }} ({{ twofaccounts.filteredCount }})&nbsp;
-                            </template>
-                            <template v-else>
-                                {{ $t('label.all') }} ({{ twofaccounts.filteredCount }})&nbsp;
-                            </template>
-                            <LucideChevronDown class="mt-1" />
-                        </button>
+                        <GroupCallToSwitch
+                            v-model:show-group-switch="showGroupSwitch"
+                            :activeGroup="twofaccounts.groupLessOnly ? -1 : parseInt(preferenceStore.activeGroup)"
+                            :currentGroup="groups.current"
+                            :filteredCount="twofaccounts.filteredCount"
+                            :useShare="false" />
                     </div>
                 </div>
             </template>
@@ -536,7 +530,7 @@
                 </div>
             </template>
             <template #footer v-if="showGroupSwitch">
-                <VueFooter :show-buttons="true">
+                <VueFooter>
                     <NavigationButton action="close" :use-link-tag="false" @closed="showGroupSwitch = false" />
                 </VueFooter>
             </template>
@@ -556,7 +550,7 @@
             </template>
         </StackLayout>
         <!-- otp modal -->
-        <Modal v-model="showOtpInModal">
+        <Modal v-model:is-active="showOtpInModal">
             <OtpDisplay
                 ref="otpDisplay"
                 :accountParams="accountParams"
